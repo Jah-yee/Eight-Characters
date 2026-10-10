@@ -12,6 +12,21 @@
   const DAY_PATH = /^\d{4}-\d{2}-\d{2}$/;
   const ELEMENTS = ['wood', 'fire', 'earth', 'metal', 'water'];
 
+  // ── The address: the chart's link parts, then the day, whose day, and the topic ──
+  // The chart's own link, in the language the day is shown in.
+  const chartLink = (state) => {
+    const params = new URLSearchParams(state.chartParams);
+    params.set('lang', state.lang);
+    return params.toString();
+  };
+  const address = (state) => {
+    const params = new URLSearchParams(chartLink(state));
+    params.set('day', state.day);
+    if (state.who === 'partner') params.set('who', 'partner');
+    if (state.topic !== null) params.set('topic', state.topic);
+    return `#today?${params}`;
+  };
+
   const create = ({ view, translate: t, escape: esc, locale, settings, format, account, go, onChart, onSettings, onEdit, onLanguage, toast }) => {
     const need = (selector) => {
       const node = view.querySelector(selector);
@@ -96,15 +111,6 @@
       return next.toISOString().slice(0, 10);
     };
 
-    // ── The address: the chart's link parts, then the day, whose day, and the topic ──
-    const address = (next) => {
-      const params = new URLSearchParams(next.chartParams);
-      params.set('lang', next.lang);
-      params.set('day', next.day);
-      if (next.who === 'partner') params.set('who', 'partner');
-      if (next.topic !== null) params.set('topic', next.topic);
-      return `#today?${params}`;
-    };
     // Moves to another state: the address follows, replacing the entry for a step and
     // adding one for a topic, and the page is drawn for it.
     const move = (changes, method = 'replaceState') => {
@@ -124,6 +130,7 @@
         latitude: chart.place.latitude,
         longitude: chart.place.longitude,
       },
+      ...(chart.fold === null ? {} : { fold: chart.fold }),
       gender: chart.gender,
       zi: chart.zi,
     });
@@ -149,7 +156,7 @@
     notice.addEventListener('click', (event) => {
       const action = event.target.closest('[data-today-action]')?.dataset.todayAction;
       if (action === 'settings') onSettings();
-      else if (action === 'edit') onEdit(state.chartParams);
+      else if (action === 'edit') onEdit(chartLink(state));
       else if (action === 'retry') show(state);
       else if (action === 'self') move({ who: 'self', topic: null });
     });
@@ -411,35 +418,57 @@
       drawPanel();
       body.classList.remove('hidden');
     };
+    // Drawing replaces the page's buttons: the one that had focus hands it to its
+    // counterpart in the new markup (the same topic, day or action), or, gone, to the
+    // day's heading, so that focus stays on the page and its keys keep working.
+    const COUNTERPARTS = [['todayTopic', 'data-today-topic'], ['todayDay', 'data-today-day'], ['todayAction', 'data-today-action']];
+    const keepingFocus = (change) => {
+      const focused = view.contains(document.activeElement) ? document.activeElement : null;
+      change();
+      if (focused === null || (focused.isConnected && !focused.closest('.hidden'))) return;
+      const pair = COUNTERPARTS.find(([key]) => focused.dataset?.[key] !== undefined);
+      const counterpart = pair ? view.querySelector(`[${pair[1]}="${CSS.escape(focused.dataset[pair[0]])}"]`) : null;
+      (counterpart !== null && !counterpart.closest('.hidden') ? counterpart : dateHeading).focus();
+    };
+    // The day is copied as text and printed only once its own answer is drawn. Until
+    // then the two say they are unavailable, and keep their focus.
+    const ready = (yes) => {
+      for (const button of [copyText, printButton]) button.setAttribute('aria-disabled', String(!yes));
+    };
+    // Says what the page shows instead of the day, with what can be done.
+    const instead = (text, actions) => keepingFocus(() => {
+      body.classList.add('hidden');
+      sayNotice(text, actions);
+    });
 
-    // Shows the day a state names: the settings are read again, then the API asked.
+    // Shows the day a state names: the settings are read again, then the API asked. Until
+    // its answer is drawn, the day is neither copied as text nor printed.
     const show = async (next) => {
       if (!DAY_PATH.test(next.day) || (next.topic !== null && !TOPIC_PATH.test(next.topic))) throw new Error(t('today_answer_error'));
       state = next;
+      answer = null;
+      ready(false);
       const mine = ++asked;
       view.classList.remove('hidden');
       view.setAttribute('aria-busy', 'true');
-      clearNotice();
+      keepingFocus(clearNotice);
       drawBar();
       try {
-        const kept = await settings.load();
+        const kept = await settings.load(() => mine === asked);
         if (mine !== asked) return;
         shownSettings = kept;
         drawBar();
         if (!state.chart.gender) {
-          body.classList.add('hidden');
-          sayNotice(t('today_needs_gender'), [['edit', t('edit_chart')]]);
+          instead(t('today_needs_gender'), [['edit', t('edit_chart')]]);
           return;
         }
         if (kept.place === null) {
-          body.classList.add('hidden');
-          sayNotice(t('today_needs_place'), [['settings', t('settings_open')]]);
+          instead(t('today_needs_place'), [['settings', t('settings_open')]]);
           return;
         }
         const partner = partnerOf(kept);
         if (state.who === 'partner' && partner === null) {
-          body.classList.add('hidden');
-          sayNotice(t(kept.partner === null ? 'today_partner_gone' : 'today_partner_problem'), [['self', t('today_self')], ['settings', t('settings_open')]]);
+          instead(t(kept.partner === null ? 'today_partner_gone' : 'today_partner_problem'), [['self', t('today_self')], ['settings', t('settings_open')]]);
           return;
         }
         const response = await fetch('/api/today', {
@@ -469,19 +498,30 @@
         }
         if (mine !== asked) return;
         if (!response.ok) {
-          body.classList.add('hidden');
-          sayNotice(typeof value?.detail === 'string' ? value.detail : t('today_answer_error'), [['retry', t('today_retry')]]);
+          instead(typeof value?.detail === 'string' ? value.detail : t('today_answer_error'), [['retry', t('today_retry')]]);
           return;
         }
-        answer = checked(value);
-        draw();
+        const reply = checked(value);
+        // Marriage is read exactly when a partner's chart is sent with the day.
+        if ((partner === null) !== (reply.marriage === null)) throw new Error(t('today_answer_error'));
+        let gone = null;
+        if (state.topic === 'marriage' && reply.marriage === null) {
+          // The partner's chart was removed, or no longer charts, since Marriage was
+          // opened: it is no longer one of the day's topics, and the page says why.
+          state = { ...state, topic: null };
+          go(address(state), 'replaceState');
+          gone = t(kept.partner === null ? 'today_partner_gone' : 'today_partner_problem');
+        }
+        answer = reply;
+        keepingFocus(draw);
+        ready(true);
         if (state.who === 'partner') sayNotice(t('today_partner_note', { name: partnerName(partner), place: kept.place.city }));
+        else if (gone !== null) sayNotice(gone);
         status.textContent = t('today_status', { day: longDate(state.day), pull: pull(answer.layers.day.pull) });
       } catch (err) {
         if (mine !== asked) return;
         console.error(err);
-        body.classList.add('hidden');
-        sayNotice(err.message || t('today_answer_error'), [['retry', t('today_retry')]]);
+        instead(err.message || t('today_answer_error'), [['retry', t('today_retry')]]);
       } finally {
         if (mine === asked) view.removeAttribute('aria-busy');
       }
@@ -523,10 +563,12 @@
     });
     pageSwitch.addEventListener('click', (event) => {
       const button = event.target.closest('button[data-page="chart"]');
-      if (button && state !== null) onChart(state.chartParams);
+      if (button && state !== null) onChart(chartLink(state));
     });
     settingsButton.addEventListener('click', () => onSettings());
-    printButton.addEventListener('click', () => window.print());
+    printButton.addEventListener('click', () => {
+      if (answer !== null) window.print();
+    });
     copyLink.addEventListener('click', async () => {
       try {
         await navigator.clipboard.writeText(location.href);
@@ -557,6 +599,7 @@
       return lines.join('\n');
     };
     copyText.addEventListener('click', async () => {
+      if (answer === null) return;
       try {
         await navigator.clipboard.writeText(text());
         toast(t('text_copied'), false);
@@ -570,7 +613,7 @@
     // to today, Escape closes a topic. Brackets are typed with Alt or AltGr on many
     // keyboards; a held key steps once.
     const keydown = (event) => {
-      if (state === null || answer === null || event.metaKey || (event.ctrlKey && !event.altKey) || event.repeat) return false;
+      if (state === null || event.metaKey || (event.ctrlKey && !event.altKey) || event.repeat) return false;
       const plain = !event.ctrlKey && !event.altKey;
       if (event.key === '[') move({ day: stepDay(state.day, -1) });
       else if (event.key === ']') move({ day: stepDay(state.day, 1) });
@@ -597,12 +640,17 @@
         list.push({ label: button.textContent.trim(), run: () => move({ topic: button.dataset.todayTopic }, 'pushState'), icon: 'chevron-right' });
       });
       list.push(
-        { label: t('page_chart'), run: () => onChart(state.chartParams), icon: 'columns-4' },
+        { label: t('page_chart'), run: () => onChart(chartLink(state)), icon: 'columns-4' },
         { label: t('copy_link'), run: () => copyLink.click(), icon: 'link-2' },
-        { label: t('copy_text'), run: () => copyText.click(), icon: 'clipboard-list' },
-        { label: t('print'), run: () => window.print(), icon: 'printer' },
-        { label: t('settings_open'), run: () => onSettings(), icon: 'settings' },
       );
+      // The day as text and on paper, once its answer is drawn.
+      if (answer !== null) {
+        list.push(
+          { label: t('copy_text'), run: () => copyText.click(), icon: 'clipboard-list' },
+          { label: t('print'), run: () => window.print(), icon: 'printer' },
+        );
+      }
+      list.push({ label: t('settings_open'), run: () => onSettings(), icon: 'settings' });
       return list;
     };
 
@@ -625,5 +673,5 @@
       },
     };
   };
-  window.EC_TODAY = { create, TOPIC_PATH, DAY_PATH };
+  window.EC_TODAY = { create, address, TOPIC_PATH, DAY_PATH };
 })();

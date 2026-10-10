@@ -525,10 +525,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // A chart for a birth at a picked place: its coordinates, not its name, which would
   // resolve to the first place so named. With a gender it has its luck pillars.
   const GENDERS = ['female', 'male'];
-  const chartRequest = ({ date, time, place, lang, zi, gender = null }) => ({
+  const chartRequest = ({ date, time, place, lang, zi, gender = null, fold = null }) => ({
     date,
     time,
-    location: { timezone: place.timezone, latitude: place.latitude, longitude: place.longitude },
+    // A time the place's clocks repeat needs its pass: 0 the first, 1 the second.
+    location: { timezone: place.timezone, latitude: place.latitude, longitude: place.longitude, ...(fold === null ? {} : { fold }) },
     include_chart: true,
     include_hidden_stems: true,
     include_ten_gods: true,
@@ -791,6 +792,7 @@ document.addEventListener('DOMContentLoaded', () => {
       timezone: request.location.timezone,
       lang: currentLanguage,
     });
+    if (request.location.fold !== undefined) query.set('fold', String(request.location.fold));
     window.location.assign(`/explorer/?${query.toString()}`);
   });
 
@@ -1395,12 +1397,12 @@ document.addEventListener('DOMContentLoaded', () => {
   // ── The address: the chart on screen and its open topic ──
   // A chart lives in the address's fragment, which browsers never send to the server:
   // #chart?date=…&time=…&place=…&city=…&latitude=…&longitude=…&timezone=…&lang=…, then
-  // gender, zi, display, luck, life and topic where they differ from a new chart's. A new
-  // chart, another topic, Edit and New chart add history entries; the language, the
-  // Zi-hour convention, the display, the luck pillar and the life grid's view replace the
-  // current one. The address never names a chart that is not on screen.
+  // gender, zi, fold, display, luck, life and topic where they differ from a new
+  // chart's. A new chart, another topic, Edit and New chart add history entries; the
+  // language, the Zi-hour convention, the display, the luck pillar and the life grid's
+  // view replace the current one. The address never names a chart that is not on screen.
   const CHART_ROUTE = '#chart?';
-  const LINK_PARTS = ['date', 'time', 'place', 'city', 'latitude', 'longitude', 'timezone', 'lang', 'gender', 'zi', 'display', 'luck', 'life', 'topic'];
+  const LINK_PARTS = ['date', 'time', 'place', 'city', 'latitude', 'longitude', 'timezone', 'lang', 'gender', 'zi', 'fold', 'display', 'luck', 'life', 'topic'];
   // The period standing in the chart as its fifth pillar: before the luck pillars, or a
   // decade's phase.
   const LUCK_PATH = /^(before|\d{1,2}\/(stem|branch))$/;
@@ -1438,6 +1440,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (request.gender) params.set('gender', request.gender);
     const zi = request.conventions?.zi_convention ?? ZI_CONVENTIONS[0];
     if (zi !== ZI_CONVENTIONS[0]) params.set('zi', zi);
+    if (request.location.fold !== undefined) params.set('fold', String(request.location.fold));
     return params;
   };
   const chartAddress = () => {
@@ -1508,6 +1511,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!/^\d{2}:\d{2}(:\d{2})?$/.test(time) || !parseWallClock(`${date}T${time}`)) throw linkError('time');
     const lang = text('lang');
     if (!['fi', 'en'].includes(lang)) throw linkError('lang');
+    // Which pass of a time the place's clocks repeat, 0 or 1: only a saved birth names one.
+    const fold = optional('fold', (value) => value === '0' || value === '1');
     return {
       date,
       time,
@@ -1521,6 +1526,7 @@ document.addEventListener('DOMContentLoaded', () => {
       lang,
       gender: optional('gender', (value) => GENDERS.includes(value)),
       zi: optional('zi', (value) => ZI_CONVENTIONS.includes(value)) ?? ZI_CONVENTIONS[0],
+      fold: fold === null ? null : Number(fold),
       display: optional('display', (value) => DISPLAYS.includes(value)) ?? 'characters',
       // Only a chart with a gender has luck pillars to stand in it.
       luck: optional('luck', (value) => LUCK_PATH.test(value) && params.has('gender')),
@@ -1700,7 +1706,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const chosen = shown;
     let kept;
     try {
-      kept = await settingsPage.load();
+      kept = await settingsPage.load(() => shown === chosen);
     } catch (err) {
       console.error(err);
       showToast(err.message, true);
@@ -1732,6 +1738,13 @@ document.addEventListener('DOMContentLoaded', () => {
     || !partnerNameStatus || !partnerCancel) throw new Error('Saving a partner is incomplete.');
   // The chart the dialog saves, taken when it opened.
   let partnerToSave = null;
+  // Which saved partner's chart a save replaces, as the settings last read say.
+  const sayReplaces = (current) => {
+    const partner = current?.partner ?? null;
+    partnerReplaces.textContent = partner === null
+      ? '' : requiredTranslation('save_partner_replaces', { name: settingsPage.partnerName(partner) });
+    partnerReplaces.classList.toggle('hidden', partner === null);
+  };
   savePartnerBtn.addEventListener('click', async () => {
     if (shown === null) return;
     if (!shown.request.gender) {
@@ -1741,7 +1754,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const chosen = shown;
     let current;
     try {
-      current = await settingsPage.load();
+      current = await settingsPage.load(() => shown === chosen);
     } catch (err) {
       console.error(err);
       showToast(err.message, true);
@@ -1750,9 +1763,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (shown !== chosen) return;
     partnerToSave = chosen;
     partnerChart.textContent = chosen.heading;
-    partnerReplaces.textContent = current.partner === null
-      ? '' : requiredTranslation('save_partner_replaces', { name: settingsPage.partnerName(current.partner) });
-    partnerReplaces.classList.toggle('hidden', current.partner === null);
+    sayReplaces(current);
     partnerNameInput.value = '';
     partnerNameStatus.textContent = '';
     partnerDialog.showModal();
@@ -1784,6 +1795,7 @@ document.addEventListener('DOMContentLoaded', () => {
         latitude: request.location.latitude,
         longitude: request.location.longitude,
       },
+      fold: request.location.fold ?? null,
       gender: request.gender,
       zi: request.conventions?.zi_convention ?? ZI_CONVENTIONS[0],
     };
@@ -1798,7 +1810,9 @@ document.addEventListener('DOMContentLoaded', () => {
       partnerDialog.close();
       showToast(requiredTranslation('save_partner_saved'), false);
     } else {
+      // Refused, the settings may have been read again: what a save replaces is said anew.
       partnerNameStatus.textContent = problem;
+      sayReplaces(settingsPage.current());
     }
   });
 
@@ -1810,6 +1824,7 @@ document.addEventListener('DOMContentLoaded', () => {
       && request.location.latitude === link.place.latitude && request.location.longitude === link.place.longitude
       && request.location.timezone === link.place.timezone
       && (request.conventions?.zi_convention ?? ZI_CONVENTIONS[0]) === link.zi
+      && (request.location.fold ?? null) === link.fold
       && (request.gender ?? null) === link.gender;
   };
 
@@ -1890,6 +1905,12 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
       if (arrival !== arrivals) return;
+      if (currentLanguage !== next.lang) {
+        // Signing in here, or another tab's account taken by the check, set the page to
+        // the account's language: the day is shown in it, and its address says so.
+        next = { ...next, lang: currentLanguage };
+        history.replaceState(null, '', `${formAddress()}${window.EC_TODAY.address(next)}`);
+      }
       today.show(next);
       return;
     }
@@ -2118,7 +2139,24 @@ document.addEventListener('DOMContentLoaded', () => {
   [keysDialog, paletteDialog].forEach((dialog) => dialog.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') event.stopPropagation();
   }));
-  const openKeys = () => keysDialog.showModal();
+  // The keys of the page shown: a chart's, with its luck pillar's where it has them, or
+  // the day's.
+  const chartKeys = [...keysDialog.querySelectorAll('.key-row-chart')];
+  const todayKeys = [...keysDialog.querySelectorAll('.key-row-today')];
+  const readKey = keysDialog.querySelector('#key-read');
+  const keyNote = keysDialog.querySelector('.key-note');
+  if (!readKey || !keyNote || !chartKeys.length || !todayKeys.length) throw new Error('The keys dialog is incomplete.');
+  const openKeys = () => {
+    const onToday = today.isShown();
+    chartKeys.forEach((row) => row.classList.toggle('hidden', onToday));
+    readKey.classList.toggle('hidden', onToday || currentLanguage !== 'en');
+    luckKeys.forEach((row) => row.classList.toggle('hidden', onToday || !luck.has()));
+    todayKeys.forEach((row) => row.classList.toggle('hidden', !onToday));
+    const note = onToday ? 'key_note_today' : 'key_note';
+    keyNote.setAttribute('data-i18n', note);
+    keyNote.textContent = requiredTranslation(note);
+    keysDialog.showModal();
+  };
   keysDialog.addEventListener('click', (event) => {
     if (event.target.closest('[data-close-dialog]')) keysDialog.close();
   });

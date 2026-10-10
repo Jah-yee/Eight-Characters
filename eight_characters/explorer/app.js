@@ -190,9 +190,11 @@
     const latitude = read('latitude');
     const longitude = read('longitude');
     const timezone = read('timezone');
+    // Which pass of a time the place's clocks repeat, as the chart's link names it.
+    const fold = read('fold');
     const city = read('city');
     const country = read('country');
-    const hasCoordinates = Boolean(latitude || longitude || timezone);
+    const hasCoordinates = Boolean(latitude || longitude || timezone || fold);
     const hasName = Boolean(city || country);
     if (!date && !time && !hasCoordinates && !hasName) {
       return null;
@@ -213,6 +215,12 @@
         !Number.isFinite(place.longitude)
       ) {
         throw new Error('The link needs a numeric latitude and longitude and a timezone.');
+      }
+      if (fold) {
+        if (fold !== '0' && fold !== '1') {
+          throw new Error('The link names a fold other than 0 or 1.');
+        }
+        place.fold = Number(fold);
       }
       return { date, time, location: place };
     }

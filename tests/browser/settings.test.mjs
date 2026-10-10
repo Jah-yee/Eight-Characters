@@ -4,9 +4,10 @@
 // one made from settings another tab has changed since is refused, and the page shows
 // the settings as they are.
 import {
-  assert, describe, it, engineName, profiles, openLink, settled, withPage, HELSINKI,
+  assert, describe, it, engineName, profiles, openLink, settled, withPage, playwright, HELSINKI,
 } from './chart-helpers.mjs';
-import { stubTurnstile } from './account-helpers.mjs';
+import { newAccount, asAccount, signInPage, stubTurnstile } from './account-helpers.mjs';
+import { dialogOpens, signInThroughDialog } from './account-page.mjs';
 
 const PLACE = {
   name: HELSINKI.display, city: HELSINKI.city, timezone: HELSINKI.timezone,
@@ -106,6 +107,37 @@ for (const profile of profiles) {
       assert.equal((await read(page)).schools.favourable, 'support');
     });
 
+    check('changes made before the last is answered follow one another, and focus stays on the preset', async (page) => {
+      await reset(page);
+      await openSettings(page);
+      // Each change is slow to reach the server, so the next is made before it is answered.
+      const answered = [];
+      let bothAnswered;
+      const both = new Promise((resolve) => { bothAnswered = resolve; });
+      page.on('response', (response) => {
+        if (new URL(response.url()).pathname !== '/api/account/schools') return;
+        answered.push(response.status());
+        if (answered.length === 2) bothAnswered();
+      });
+      await page.route('**/api/account/schools', async (route) => {
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        await route.fallback();
+      });
+      // Arrowing through a school's presets: each one passed is a change.
+      await page.evaluate(() => { window.__drawn = document.getElementById('settings-favourable-support'); });
+      await page.locator('#settings-favourable-support').focus();
+      await page.keyboard.press('ArrowDown');
+      await page.keyboard.press('ArrowUp');
+      await both;
+      assert.deepEqual(answered, [200, 200], 'neither change was refused');
+      // Drawn again once both are answered, with focus on the preset it was on.
+      await page.waitForFunction(() => document.getElementById('settings-favourable-support') !== window.__drawn);
+      assert.equal(await page.evaluate(() => document.activeElement?.id), 'settings-favourable-support');
+      assert.equal(await page.locator('#settings-status').isHidden(), true);
+      assert.equal((await read(page)).chosen.favourable, null, 'the last change decides');
+      assert.equal(await page.locator('input[name="settings-favourable"]:checked').getAttribute('value'), 'support');
+    });
+
     check('a change made from settings another tab has changed since is refused, and the page shows them as they are', async (page) => {
       await reset(page);
       await openSettings(page);
@@ -157,9 +189,62 @@ for (const profile of profiles) {
       await page.locator('#chart-view').waitFor({ state: 'visible' });
       assert.equal(await page.evaluate(() => new URLSearchParams(location.hash.split('?')[1]).get('date')), BIRTH.date);
       await openSettings(page);
-      await page.locator('[data-settings-action="remove"]').click();
+      await page.locator('[data-settings-action="remove"]').focus();
+      await page.keyboard.press('Enter');
       await page.waitForFunction(() => document.getElementById('settings-partner-body').textContent.includes('No partner’s chart'));
       assert.equal((await read(page)).partner, null);
+      // The button that had focus is gone: its part's first control has it now.
+      assert.equal(await page.evaluate(() => document.activeElement?.dataset.settingsAction), 'new');
+    });
+
+    check('a save refused for a partner saved meanwhile names that partner, and saved again replaces it', async (page) => {
+      await reset(page);
+      await openLink(page, chartLink(), { place: HELSINKI });
+      await page.locator('#save-partner-btn').click();
+      await page.locator('#partner-dialog').waitFor({ state: 'visible' });
+      assert.equal(await page.locator('#partner-dialog-replaces').isHidden(), true);
+      await changeElsewhere(page, 'PUT', '/api/account/partner', {
+        name: 'Saved elsewhere', date: '1975-08-14', time: '07:45', place: PLACE, gender: 'female', zi: 'split_midnight',
+      });
+      await page.locator('#partner-save').click();
+      await page.waitForFunction(() => document.getElementById('partner-name-status').textContent !== '');
+      assert.match(await page.locator('#partner-name-status').textContent(), /changed elsewhere/);
+      assert.equal(await page.locator('#partner-dialog-replaces').isVisible(), true);
+      assert.match(await page.locator('#partner-dialog-replaces').textContent(), /Saved elsewhere/);
+      assert.equal((await read(page)).partner.name, 'Saved elsewhere', 'nothing was replaced');
+      await page.locator('#partner-save').click();
+      await page.locator('#partner-dialog').waitFor({ state: 'hidden' });
+      const kept = (await read(page)).partner;
+      assert.equal(kept.date, BIRTH.date);
+      assert.equal(kept.name, null);
+    });
+
+    check('a partner born in an hour the clocks repeat opens as its chart, at its pass, and keeps it', async (page) => {
+      await reset(page);
+      // 25 October 2020 in Helsinki: the clocks went back at 04:00, so 03:30 came twice.
+      const REPEATED = { date: '2020-10-25', time: '03:30', place: PLACE, fold: 1, gender: 'female', zi: 'split_midnight' };
+      await changeElsewhere(page, 'PUT', '/api/account/partner', REPEATED);
+      await openSettings(page);
+      const asked = [];
+      page.on('request', (request) => {
+        if (new URL(request.url()).pathname === '/api/four_pillars') asked.push(request.postDataJSON());
+      });
+      await page.locator('[data-settings-action="open"]').click();
+      await page.locator('#chart-view').waitFor({ state: 'visible' });
+      await page.waitForFunction(() => !document.getElementById('chart-view').hasAttribute('aria-busy'));
+      assert.equal(await page.evaluate(() => new URLSearchParams(location.hash.split('?')[1]).get('fold')), '1');
+      assert.equal(asked.at(-1).location.fold, 1);
+      assert.equal(await page.locator('#form-error').isHidden(), true);
+      // Saved as the partner's chart again, it keeps its pass.
+      await page.locator('#save-partner-btn').click();
+      await page.locator('#partner-dialog').waitFor({ state: 'visible' });
+      await page.locator('#partner-save').click();
+      await page.locator('#partner-dialog').waitFor({ state: 'hidden' });
+      assert.equal((await read(page)).partner.fold, 1);
+      // And the explorer is asked for the same pass.
+      const explored = page.waitForRequest('**/api/evolution_explorer');
+      await page.locator('#view-switch button[data-view="evolution"]').click();
+      assert.equal((await explored).postDataJSON().location.fold, 1);
     });
 
     check('a chart without a gender is not saved as a partner, and says why', async (page) => {
@@ -180,5 +265,23 @@ describe(`${engineName} / settings signed out`, { concurrency: false }, () => {
     await page.goto(new URL('/#settings', process.env.EC_BASE_URL).href);
     await page.locator('#account-dialog').waitFor({ state: 'visible' });
     assert.equal(await page.locator('#settings-view').isHidden(), true);
+  }, { signedIn: false }));
+
+  it('a change after the session ended elsewhere asks for a sign-in, and is not repeated', { timeout: 90000 }, () => withPage(profiles[0], async (page) => {
+    const own = await newAccount(playwright, { language: 'en', label: 'settings-ended' });
+    await signInPage(page, own);
+    await stubTurnstile(page);
+    await openSettings(page);
+    // Signed out on every device, from another one: the page still holds the account.
+    await asAccount(playwright, own, async (request) => {
+      assert.equal((await request.delete('/api/account/sessions', { data: { key: own.key } })).status(), 204);
+    });
+    await page.locator('#settings-favourable-climate').click();
+    await dialogOpens(page);
+    await signInThroughDialog(page, own.email);
+    await page.locator('#settings-status').waitFor({ state: 'visible' });
+    assert.match(await page.locator('#settings-status').textContent(), /signed in again/);
+    assert.equal((await read(page)).chosen.favourable, null, 'the change was not made');
+    assert.equal(await page.locator('input[name="settings-favourable"]:checked').getAttribute('value'), 'support');
   }, { signedIn: false }));
 });

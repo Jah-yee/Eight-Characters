@@ -30,11 +30,28 @@
     if (!statusLine || !partnerBody || !placeNow || !placeForm || !placeInput || !suggestionList || !placeStatus
       || !placeSave || !placeRemove || !schoolsBody || !closeButton) throw new Error('Settings view is incomplete.');
 
-    // The settings as the API last gave them, and the schools it lists. Each read and
-    // write is numbered: an answer to an older one changes nothing.
+    // The settings as the API last gave them, and the schools it lists.
     let settings = null;
     let catalog = null;
-    let asked = 0;
+    // Reads and changes run one at a time, in the order they were made: a change waits
+    // for the ones made before it and is made from the settings they left, so changes in
+    // quick succession (arrowing through a school's presets) follow one another.
+    let queue = Promise.resolve();
+    const inTurn = (task) => {
+      const turn = queue.then(task);
+      queue = turn.catch(() => {});
+      return turn;
+    };
+    // A change is made from the settings on screen. Once they are replaced by settings
+    // this page did not make (changed elsewhere, another account's, a sign-in), the
+    // changes still waiting were made from the old ones, and are not made: `basis`
+    // counts the replacements, and `replaced` says why the last one happened. A sign-out
+    // starts a new `generation`: a read answered after it is not taken.
+    let basis = 0;
+    let replaced = '';
+    let generation = 0;
+    // Changes still waiting: the page is drawn once the last of them has its answer.
+    let waiting = 0;
 
     const call = async (method, path, body) => {
       const response = await fetch(path, {
@@ -65,13 +82,35 @@
       return value;
     };
 
-    // The settings, read again from the API: the newest read decides.
-    const load = async () => {
-      const mine = ++asked;
+    // The settings, read from the API. Settings other than those on screen replace the
+    // basis of the changes still waiting, for the reason given.
+    const read = async (why = t('settings_changed_elsewhere')) => {
+      const at = generation;
       const value = checked(await call('GET', '/api/account/settings'));
-      if (mine === asked) settings = value;
-      return settings;
+      if (at !== generation) throw new Error(t('account_session_ended'));
+      if (settings === null || value.key !== settings.key || value.updated_at !== settings.updated_at) {
+        basis += 1;
+        replaced = why;
+      }
+      settings = value;
+      return value;
     };
+    // The settings, read anew in their turn. A session that ended meanwhile asks for a
+    // sign-in first, while `wanted` holds: the page may still hold the account whose
+    // session ended, so the server is asked before the sign-in is. The settings are
+    // then those of the account signed in.
+    const load = (wanted = () => true) => inTurn(async () => {
+      try {
+        return await read();
+      } catch (err) {
+        if (!(err instanceof Refused) || err.status !== 401 || !wanted()) throw err;
+        if (!(await account.recheck(wanted))) {
+          if (!wanted()) throw err;
+          await account.signIn();
+        }
+        return read(t('settings_signed_in_again'));
+      }
+    });
     const loadCatalog = async () => {
       if (catalog === null) {
         const value = await call('GET', '/api/schools');
@@ -89,43 +128,55 @@
       statusLine.classList.toggle('hidden', text === '');
     };
 
+    // Refused for settings it was not made from: the settings are read again and shown,
+    // and the changes still waiting, made from the old ones, are not made either.
+    const reread = async (why) => {
+      basis += 1;
+      replaced = why;
+      await read(why);
+      onChanged(settings);
+      return why;
+    };
     // A change, made from the settings on screen: null once the API has made it, or why
-    // it was not made. Settings changed elsewhere, or another account's, are read again
-    // and drawn, and the change is not repeated: the reader decides again.
-    const write = async (method, path, body) => {
-      if (settings === null) await load();
-      const mine = ++asked;
-      try {
-        const value = checked(await call(method, path, { ...body, key: settings.key, updated_at: settings.updated_at }));
-        if (mine === asked) settings = value;
-        draw();
-        onChanged(settings);
-        return null;
-      } catch (err) {
-        if (!(err instanceof Refused)) throw err;
-        if (err.status === 412) {
-          await load();
-          draw();
+    // it was not made. Refused because the settings changed elsewhere, because the
+    // session ended or because another account is signed in now, the settings are read
+    // again and drawn, and the change is not repeated: the reader decides again.
+    const write = (method, path, body) => {
+      const from = basis;
+      waiting += 1;
+      return inTurn(async () => {
+        try {
+          if (from !== basis) return replaced;
+          if (settings === null) await read();
+          const value = checked(await call(method, path, { ...body, key: settings.key, updated_at: settings.updated_at }));
+          settings = value;
           onChanged(settings);
-          return t('settings_changed_elsewhere');
+          return null;
+        } catch (err) {
+          // A change not made, for whatever reason, stops the changes waiting behind it:
+          // they were made from the settings it was to leave.
+          basis += 1;
+          replaced = err.message || t('settings_load_error');
+          if (!(err instanceof Refused)) throw err;
+          if (err.status === 412) return reread(t('settings_changed_elsewhere'));
+          if (err.status === 401) {
+            // Signed out elsewhere: the server is asked first, since the page may still
+            // hold the account; then a sign-in, and the settings of the account signed in.
+            replaced = t('account_session_ended');
+            if (!(await account.recheck(() => true))) await account.signIn();
+            return reread(t('settings_signed_in_again'));
+          }
+          if (err.status === 409) {
+            // Another account is signed in in this browser now: its settings are shown.
+            await account.stillSignedIn(() => true);
+            await reread(err.message);
+          }
+          return err.message;
+        } finally {
+          waiting -= 1;
+          if (waiting === 0) draw();
         }
-        if (err.status === 401) {
-          // Signed out elsewhere: a sign-in, then the settings of the account signed in.
-          await account.signIn();
-          await load();
-          draw();
-          onChanged(settings);
-          return t('settings_signed_in_again');
-        }
-        if (err.status === 409) {
-          // Another account is signed in in this browser now: its settings are shown.
-          await account.stillSignedIn(() => true);
-          await load();
-          draw();
-          onChanged(settings);
-        }
-        return err.message;
-      }
+      });
     };
     // A change from this page: done, it is said briefly; refused, its reason stays here.
     const change = async (method, path, body, done) => {
@@ -165,6 +216,8 @@
       });
       params.set('gender', birth.gender);
       if (birth.zi !== 'split_midnight') params.set('zi', birth.zi);
+      // A time the place's clocks repeat names its pass, as the saved birth does.
+      if (birth.fold !== null) params.set('fold', String(birth.fold));
       return params.toString();
     };
     const partnerName = (partner) => partner.name ?? t('settings_partner_unnamed');
@@ -369,11 +422,22 @@
       await change('PATCH', '/api/account/schools', { [setting]: choice }, t('settings_school_saved'));
     });
 
+    // Drawing replaces the controls: the one that had focus hands it to its counterpart
+    // (the same preset or action), or, gone, to the first control of its part, so the
+    // keyboard stays where it was.
     const draw = () => {
       if (settings === null) return;
+      const focused = view.contains(document.activeElement) ? document.activeElement : null;
+      const part = focused?.closest('#settings-partner-body, #settings-schools-body') ?? null;
+      let counterpart = null;
+      if (focused?.id) counterpart = `#${CSS.escape(focused.id)}`;
+      else if (focused?.dataset.settingsAction) counterpart = `[data-settings-action="${CSS.escape(focused.dataset.settingsAction)}"]`;
       drawPartner();
       drawPlace();
       if (catalog !== null) drawSchools();
+      if (focused === null || focused.isConnected) return;
+      const next = (counterpart === null ? null : view.querySelector(counterpart)) ?? part?.querySelector('button, input');
+      next?.focus();
     };
 
     // Shows the settings, read anew: whatever another tab changed meanwhile is shown.
@@ -382,7 +446,7 @@
       view.classList.remove('hidden');
       view.setAttribute('aria-busy', 'true');
       try {
-        await Promise.all([load(), loadCatalog()]);
+        await Promise.all([load(() => !view.classList.contains('hidden')), loadCatalog()]);
         draw();
         say('');
       } catch (err) {
@@ -409,10 +473,13 @@
       current: () => settings,
       savePartner,
       partnerName,
-      // A sign-out forgets what was read for the account.
+      // A sign-out forgets what was read for the account, and the changes still waiting
+      // are not made.
       forget: () => {
         settings = null;
-        asked += 1;
+        generation += 1;
+        basis += 1;
+        replaced = t('account_session_ended');
       },
       // The page's language changed: the schools are written in it.
       redraw: () => {

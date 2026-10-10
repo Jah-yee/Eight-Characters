@@ -202,17 +202,18 @@
       <button type="button" class="panel-close" data-close-dialog data-i18n="panel_close">Sulje</button>
     </div>
     <dl class="key-list">
-      <div class="key-row">
+      <!-- A chart's own keys. -->
+      <div class="key-row key-row-chart">
         <dt><kbd class="key-arrow is-left"><span class="sr-only" data-i18n="key_left">Vasen nuoli</span></kbd>
           <kbd class="key-arrow is-right"><span class="sr-only" data-i18n="key_right">Oikea nuoli</span></kbd></dt>
         <dd data-i18n="key_move_pillars">Pilarista toiseen</dd>
       </div>
-      <div class="key-row">
+      <div class="key-row key-row-chart">
         <dt><kbd class="key-arrow is-up"><span class="sr-only" data-i18n="key_up">Ylänuoli</span></kbd>
           <kbd class="key-arrow is-down"><span class="sr-only" data-i18n="key_down">Alanuoli</span></kbd></dt>
         <dd data-i18n="key_move_rows">Rungon ja haaran välillä</dd>
       </div>
-      <div class="key-row">
+      <div class="key-row key-row-chart">
         <dt><kbd>Enter</kbd> <kbd data-i18n="key_space">Välilyönti</kbd></dt>
         <dd data-i18n="key_hidden_stems">Haaran piilorungot</dd>
       </div>
@@ -221,7 +222,7 @@
         <dt><kbd>R</kbd></dt>
         <dd>Read what the focused card means</dd>
       </div>
-      <div class="key-row">
+      <div class="key-row key-row-chart">
         <dt><kbd>T</kbd></dt>
         <dd data-i18n="key_turn">Kortti kymmeneen jumalaan ja takaisin</dd>
       </div>
@@ -246,6 +247,15 @@
         <dt><kbd class="key-arrow is-up"><span class="sr-only" data-i18n="key_up">Ylänuoli</span></kbd>
           <kbd class="key-arrow is-down"><span class="sr-only" data-i18n="key_down">Alanuoli</span></kbd></dt>
         <dd data-i18n="key_life_rows">Elämän vaiheesta toiseen</dd>
+      </div>
+      <!-- Today's own keys. -->
+      <div class="key-row key-row-today hidden">
+        <dt><kbd>[</kbd> <kbd>]</kbd></dt>
+        <dd data-i18n="key_day_step">Päivä taakse tai eteen</dd>
+      </div>
+      <div class="key-row key-row-today hidden">
+        <dt><kbd>N</kbd></dt>
+        <dd data-i18n="key_day_now">Tämä päivä siellä, missä olet</dd>
       </div>
       <div class="key-row">
         <dt><kbd>Esc</kbd></dt>
@@ -308,7 +318,7 @@
   <div class="chart-column">
     <header class="chart-bar">
       <div class="chart-identity">
-        <h1 class="name" id="today-date"></h1>
+        <h1 class="name" id="today-date" tabindex="-1"></h1>
         <p class="solar-time" id="today-chart"></p>
       </div>
       <div class="chart-tools">

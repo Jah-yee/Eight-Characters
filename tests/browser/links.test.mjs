@@ -218,6 +218,7 @@ for (const profile of profiles) {
         [link({ ...CANONICAL, latitude: '91' }), 'latitude'],
         [link({ ...CANONICAL, lang: 'de' }), 'lang'],
         [link({ ...CANONICAL, zi: 'midnight' }), 'zi'],
+        [link({ ...CANONICAL, fold: '2' }), 'fold'],
         [link({ ...CANONICAL, display: 'glyphs' }), 'display'],
         [link({ ...CANONICAL, colour: 'red' }), 'colour'],
         [`${link(CANONICAL)}&lang=fi`, 'lang'],

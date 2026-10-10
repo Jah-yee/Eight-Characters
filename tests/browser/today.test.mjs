@@ -4,8 +4,10 @@
 // and the schools the account keeps. The address names the chart, the day, whose day
 // and the topic; a step replaces it and a topic adds to it; late answers are dropped.
 import {
-  assert, describe, it, engineName, profiles, openLink, settled, withPage, HELSINKI,
+  assert, describe, it, engineName, profiles, openLink, settled, withPage, playwright, HELSINKI,
 } from './chart-helpers.mjs';
+import { newAccount, asAccount, signInPage, stubTurnstile } from './account-helpers.mjs';
+import { dialogOpens, signInThroughDialog } from './account-page.mjs';
 
 // A made-up birth, of nobody: the luck suites' sample, 14 August 1975, 07:45, Helsinki.
 const CHART = { date: '1975-08-14', time: '07:45', gender: 'female' };
@@ -229,12 +231,113 @@ for (const profile of profiles) {
       await page.locator('.today-run-day.is-selected').focus();
       await page.keyboard.press('?');
       assert.equal(await page.locator('#keys-dialog').isVisible(), true);
+      // The day's keys, not the chart's.
+      assert.deepEqual(await page.locator('#keys-dialog .key-row').filter({ visible: true }).locator('dd').allTextContents(),
+        ['The day before or after', 'Today, where you are', 'Closes what is open', 'Commands', 'These keys']);
+      assert.equal(await page.locator('#keys-dialog .key-note').textContent(),
+        'Letter keys work while the page has focus and no field does.');
       await page.keyboard.press('Escape');
       // A field's own keys are its own.
       await page.locator('#today-copy-link').focus();
       await page.evaluate(() => document.activeElement.blur());
       await page.keyboard.press(']');
       assert.equal(await part(page, 'day'), DAY, 'nothing on the page has focus');
+    });
+
+    check('a topic opened from the keyboard keeps focus on its button, and the keys go on working', async (page) => {
+      await page.clock.setFixedTime(NOW);
+      await recordToday(page);
+      await page.goto(new URL('/', process.env.EC_BASE_URL).href);
+      await setSettings(page);
+      await page.goto(new URL(todayLink(), process.env.EC_BASE_URL).href);
+      await shown(page);
+      await page.locator('#today-topics [data-today-topic="work"]').focus();
+      await page.keyboard.press('Enter');
+      await shown(page);
+      assert.equal(await part(page, 'topic'), 'work');
+      assert.equal(await page.evaluate(() => document.activeElement?.dataset.todayTopic), 'work');
+      await page.keyboard.press('Escape');
+      await shown(page);
+      assert.equal(await part(page, 'topic'), null);
+      assert.equal(await page.evaluate(() => document.activeElement?.dataset.todayTopic), 'work');
+      await page.keyboard.press(']');
+      await shown(page);
+      assert.equal(await part(page, 'day'), '2026-10-12');
+      // A day of the run, chosen from the keyboard, keeps it too.
+      await page.locator('.today-run-day[data-today-day="2026-10-14"]').focus();
+      await page.keyboard.press('Enter');
+      await shown(page);
+      assert.equal(await part(page, 'day'), '2026-10-14');
+      assert.equal(await page.evaluate(() => document.activeElement?.dataset.todayDay), '2026-10-14');
+    });
+
+    check('the day in another language opens the chart in it', async (page) => {
+      await page.clock.setFixedTime(NOW);
+      const { answers } = await recordToday(page);
+      await page.goto(new URL('/', process.env.EC_BASE_URL).href);
+      await setSettings(page);
+      await page.goto(new URL(todayLink(), process.env.EC_BASE_URL).href);
+      await shown(page);
+      await page.locator('#today-language [data-today-lang="fi"]').click();
+      await shown(page);
+      assert.equal(await part(page, 'lang'), 'fi');
+      assert.equal(answers.at(-1).request.lang, 'fi');
+      await page.locator('#today-page-switch [data-page="chart"]').click();
+      await page.locator('#chart-view').waitFor({ state: 'visible' });
+      await page.waitForFunction(() => !document.getElementById('chart-view').hasAttribute('aria-busy'));
+      assert.equal(await part(page, 'lang'), 'fi');
+      assert.equal(await page.evaluate(() => document.documentElement.lang), 'fi');
+    });
+
+    check('until its answer is drawn, a day is neither copied as text nor printed, and then its own text is', async (page) => {
+      await page.clock.setFixedTime(NOW);
+      await page.addInitScript(() => {
+        window.__copied = [];
+        Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (text) => { window.__copied.push(text); } } });
+      });
+      const { answers, hold } = await recordToday(page);
+      await page.goto(new URL('/', process.env.EC_BASE_URL).href);
+      await setSettings(page);
+      await page.goto(new URL(todayLink(), process.env.EC_BASE_URL).href);
+      await shown(page);
+      assert.equal(await page.locator('#today-copy-text').getAttribute('aria-disabled'), 'false');
+      const release = hold('2026-10-12');
+      await page.locator('.today-step[data-today-step="1"]').click();
+      await page.waitForFunction(() => new URLSearchParams(location.hash.split('?')[1]).get('day') === '2026-10-12');
+      assert.equal(await page.locator('#today-copy-text').getAttribute('aria-disabled'), 'true');
+      assert.equal(await page.locator('#today-print').getAttribute('aria-disabled'), 'true');
+      // Pressed anyway: the button says it is unavailable, and copies nothing.
+      await page.locator('#today-copy-text').click({ force: true });
+      assert.deepEqual(await page.evaluate(() => window.__copied), [], 'nothing is copied while the day is on its way');
+      release();
+      await shown(page);
+      assert.equal(await page.locator('#today-copy-text').getAttribute('aria-disabled'), 'false');
+      await page.locator('#today-copy-text').click();
+      await page.waitForFunction(() => window.__copied.length === 1);
+      const copied = await page.evaluate(() => window.__copied[0]);
+      const { payload } = answers.at(-1);
+      assert.equal(payload.date, '2026-10-12');
+      assert.ok(copied.startsWith('Monday, October 12, 2026'), copied);
+      const day = payload.layers.day;
+      assert.ok(copied.includes(`${day.pillar.stem.chinese}${day.pillar.branch.chinese} ${day.pillar.stem.pinyin} ${day.pillar.branch.pinyin} · ${pull(day.pull)}`), copied);
+    });
+
+    check('Marriage, open when the partner’s chart is removed elsewhere, closes and the day says why', async (page) => {
+      await page.clock.setFixedTime(NOW);
+      await recordToday(page);
+      await page.goto(new URL('/', process.env.EC_BASE_URL).href);
+      await setSettings(page, { partner: PARTNER });
+      await page.goto(new URL(todayLink({ topic: 'marriage' }), process.env.EC_BASE_URL).href);
+      await shown(page);
+      assert.equal(await page.locator('#today-detail-title').textContent(), 'Marriage');
+      await setSettings(page);
+      await page.reload();
+      await shown(page);
+      assert.equal(await part(page, 'topic'), null);
+      assert.equal(await page.locator('#today-body').isVisible(), true);
+      assert.equal(await page.locator('#today-panel').isHidden(), true);
+      assert.equal(await page.locator('[data-today-topic="marriage"]').count(), 0);
+      assert.match(await page.locator('#today-notice').textContent(), /no longer saved/);
     });
 
     check('the partner’s day: the switch carries the name as text, and Marriage reads both charts', async (page) => {
@@ -362,6 +465,53 @@ for (const profile of profiles) {
     });
   });
 }
+
+describe(`${engineName} / today and the session`, { concurrency: false }, () => {
+  // An account of its own, with where you are kept, and a page signed in to it.
+  const ownAccount = async (page, language, label) => {
+    const own = await newAccount(playwright, { language, label });
+    await asAccount(playwright, own, async (request) => {
+      const kept = await request.put('/api/account/place', { data: { place: PLACE, key: own.key, updated_at: null } });
+      assert.equal(kept.status(), 200, await kept.text());
+    });
+    await stubTurnstile(page);
+    return own;
+  };
+
+  it('a day asked for after the session ended asks for a sign-in, then is drawn', { timeout: 120000 }, () => withPage(profiles[0], async (page) => {
+    await page.clock.setFixedTime(NOW);
+    const own = await ownAccount(page, 'en', 'today-ended');
+    await signInPage(page, own);
+    await recordToday(page);
+    await page.goto(new URL(todayLink(), process.env.EC_BASE_URL).href);
+    await shown(page);
+    // Signed out on every device, from another one: the page still holds the account.
+    await asAccount(playwright, own, async (request) => {
+      assert.equal((await request.delete('/api/account/sessions', { data: { key: own.key } })).status(), 204);
+    });
+    await page.locator('.today-step[data-today-step="1"]').click();
+    await dialogOpens(page);
+    await signInThroughDialog(page, own.email);
+    await shown(page);
+    assert.equal(await part(page, 'day'), '2026-10-12');
+    assert.equal(await page.locator('#today-body').isVisible(), true);
+    assert.equal(await page.locator('#today-notice').isHidden(), true);
+  }, { signedIn: false }));
+
+  it('signed in on a day’s link, the day is in the account’s language, and so is its address', { timeout: 120000 }, () => withPage(profiles[0], async (page) => {
+    await page.clock.setFixedTime(NOW);
+    const own = await ownAccount(page, 'fi', 'today-language');
+    const { answers } = await recordToday(page);
+    await page.goto(new URL(todayLink(), process.env.EC_BASE_URL).href);
+    await dialogOpens(page);
+    await signInThroughDialog(page, own.email);
+    await shown(page);
+    assert.equal(await part(page, 'lang'), 'fi');
+    assert.equal(await page.evaluate(() => document.documentElement.lang), 'fi');
+    assert.equal(answers.at(-1).request.lang, 'fi');
+    assert.equal(await page.locator('#today-language [data-today-lang="fi"]').getAttribute('aria-pressed'), 'true');
+  }, { signedIn: false }));
+});
 
 describe(`${engineName} / today in a comparison`, { concurrency: false }, () => {
   it('a compared chart has no Chart · Today and no Save as partner', { timeout: 120000 }, () => withPage(profiles[0], async (page) => {
