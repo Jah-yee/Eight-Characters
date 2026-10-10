@@ -237,6 +237,12 @@ for (const profile of profiles) {
       assert.equal(await page.locator('#keys-dialog .key-note').textContent(),
         'Letter keys work while the page has focus and no field does.');
       await page.keyboard.press('Escape');
+      // The commands, too, show over the day: neither dialog lives in the hidden chart.
+      await page.keyboard.press('ControlOrMeta+k');
+      assert.equal(await page.locator('#command-palette').isVisible(), true);
+      assert.ok((await page.locator('#palette-list').textContent()).includes('The day after'));
+      await page.keyboard.press('Escape');
+      assert.equal(await page.locator('#command-palette').isVisible(), false);
       // A field's own keys are its own.
       await page.locator('#today-copy-link').focus();
       await page.evaluate(() => document.activeElement.blur());
