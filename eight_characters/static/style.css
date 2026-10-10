@@ -3244,7 +3244,7 @@ body:has(> .compare-container:not(.hidden)) { padding: var(--space-4); }
   background: var(--surface-2);
   color: var(--ink-1);
 }
-.today-view[aria-busy='true'] .today-body { opacity: 0.6; }
+.today-view[aria-busy='true'] :is(.today-body, .chart-panel) { opacity: 0.6; }
 .today-view[aria-busy='true'] button { cursor: progress; }
 .today-view .bar-action[aria-disabled='true'] { opacity: 0.5; cursor: default; }
 .today-body {

@@ -65,7 +65,9 @@ A link names the chart and the day. The partner and where you are come from the
 account that opens it, and a link opened signed out asks for a sign-in first. A link
 with an unknown, repeated or invalid part says so, naming the part, as a chart link
 does. A day the API cannot read (outside the engine's years, with the run's days) is
-shown with the API's reason.
+shown with the API's reason, and nothing of the day before, nor its open topic, stays on
+screen; Try again asks again. While a day is on its way, the day before and its topic
+are dimmed.
 
 A day step, Today, the partner switch and the language replace the address; a topic,
 and Chart · Today, add to the history. Only the answer to the latest request is drawn.

@@ -158,13 +158,14 @@
           basis += 1;
           replaced = err.message || t('settings_load_error');
           if (!(err instanceof Refused)) throw err;
-          if (err.status === 412) return reread(t('settings_changed_elsewhere'));
+          // Awaited here, so that the drawing below shows the settings read again.
+          if (err.status === 412) return await reread(t('settings_changed_elsewhere'));
           if (err.status === 401) {
             // Signed out elsewhere: the server is asked first, since the page may still
             // hold the account; then a sign-in, and the settings of the account signed in.
             replaced = t('account_session_ended');
             if (!(await account.recheck(() => true))) await account.signIn();
-            return reread(t('settings_signed_in_again'));
+            return await reread(t('settings_signed_in_again'));
           }
           if (err.status === 409) {
             // Another account is signed in in this browser now: its settings are shown.

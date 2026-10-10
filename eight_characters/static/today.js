@@ -435,9 +435,13 @@
     const ready = (yes) => {
       for (const button of [copyText, printButton]) button.setAttribute('aria-disabled', String(!yes));
     };
-    // Says what the page shows instead of the day, with what can be done.
+    // Says what the page shows instead of the day, with what can be done: the day before
+    // it, and its open topic, are no longer shown.
     const instead = (text, actions) => keepingFocus(() => {
       body.classList.add('hidden');
+      panel.classList.add('hidden');
+      view.classList.remove('has-panel');
+      detail.innerHTML = '';
       sayNotice(text, actions);
     });
 

@@ -150,6 +150,11 @@ for (const profile of profiles) {
       assert.equal(now.chosen.transits, 'whole');
       assert.equal(await page.locator('input[name="settings-transits"]:checked').getAttribute('value'), 'whole');
       assert.equal(await page.locator('input[name="settings-season"]:checked').getAttribute('value'), 'eighteen');
+      // Chosen again, the change is made from the settings now shown, and keeps the other's.
+      await page.locator('#settings-season-months').click();
+      await page.waitForFunction(async () => (await (await fetch('/api/account/settings')).json()).chosen.season === 'months');
+      assert.equal((await read(page)).chosen.transits, 'whole');
+      await page.waitForFunction(() => document.getElementById('settings-status').classList.contains('hidden'));
     });
 
     check('Save as partner keeps the chart on screen, named as text, and Settings opens and removes it', async (page) => {

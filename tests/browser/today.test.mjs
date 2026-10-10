@@ -322,6 +322,30 @@ for (const profile of profiles) {
       assert.ok(copied.includes(`${day.pillar.stem.chinese}${day.pillar.branch.chinese} ${day.pillar.stem.pinyin} ${day.pillar.branch.pinyin} · ${pull(day.pull)}`), copied);
     });
 
+    check('a day that cannot be shown leaves nothing of the day before, its topic neither, and Retry asks again', async (page) => {
+      await page.clock.setFixedTime(NOW);
+      await recordToday(page);
+      await page.goto(new URL('/', process.env.EC_BASE_URL).href);
+      await setSettings(page);
+      await page.goto(new URL(todayLink({ topic: 'work' }), process.env.EC_BASE_URL).href);
+      await shown(page);
+      assert.equal(await page.locator('#today-panel').isVisible(), true);
+      const refuse = (route) => route.fulfill({ status: 500, json: { detail: 'Stopped by the test.' } });
+      await page.route('**/api/today', refuse);
+      await page.locator('.today-step[data-today-step="1"]').click();
+      await shown(page);
+      assert.equal(await page.locator('#today-notice').textContent(), 'Stopped by the test.Try again');
+      assert.equal(await page.locator('#today-body').isHidden(), true);
+      assert.equal(await page.locator('#today-panel').isHidden(), true);
+      assert.equal(await page.locator('#today-detail').innerHTML(), '');
+      await page.unroute('**/api/today', refuse);
+      await page.locator('[data-today-action="retry"]').click();
+      await shown(page);
+      assert.equal(await part(page, 'day'), '2026-10-12');
+      assert.equal(await page.locator('#today-body').isVisible(), true);
+      assert.equal(await page.locator('#today-detail-title').textContent(), 'Work');
+    });
+
     check('Marriage, open when the partner’s chart is removed elsewhere, closes and the day says why', async (page) => {
       await page.clock.setFixedTime(NOW);
       await recordToday(page);
