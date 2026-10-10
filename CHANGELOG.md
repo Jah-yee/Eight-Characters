@@ -40,6 +40,8 @@ keeps for it, drawn from the API of 0.48.0 (#67).
   partner, names as text, and the sign-in they need.
 - `tests/test_accounts_settings.py`: the version check, in the store and the API.
 - `links.test.mjs` refuses a wrong `fold`; `location.test.mjs` checks the explorer's.
+- `foundations.test.mjs`: Today, with each of its topics, and Settings are set in the
+  page fonts and meet AA contrast, in both languages, light and dark.
 - A browser run filtered by name (`tests/run_checks.py browser --name …`) ends: Node
   calls a file's root `after` while its `before` is still under way when none of its
   tests match, and the `after` hooks now wait for `before` to settle.

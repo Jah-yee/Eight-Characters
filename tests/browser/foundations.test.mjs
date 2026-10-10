@@ -367,6 +367,69 @@ for (const profile of profiles) {
       });
     }
 
+    // Today, with each of its topics, and Settings, in both languages: the account keeps
+    // where you are and a partner's chart (made-up births, of nobody).
+    for (const scheme of ['light', 'dark']) {
+      // Twelve pages, each asked for anew: more time than one page's checks.
+      it(`Today and Settings are set in the page fonts and meet AA contrast (${scheme})`, { timeout: 180000 }, () => withPage(profile, async (page) => {
+        await page.emulateMedia({ colorScheme: scheme });
+        await installAudit(page);
+        await page.clock.setFixedTime(new Date('2026-10-11T09:00:00Z'));
+        await page.goto(process.env.EC_BASE_URL);
+        const place = {
+          name: HELSINKI.display, city: HELSINKI.city, timezone: HELSINKI.timezone,
+          latitude: HELSINKI.latitude, longitude: HELSINKI.longitude,
+        };
+        const statuses = await page.evaluate(async (place) => {
+          const write = async (method, path, body) => {
+            const read = await (await fetch('/api/account/settings')).json();
+            const response = await fetch(path, {
+              method, headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ...body, key: read.key, updated_at: read.updated_at }),
+            });
+            return response.status;
+          };
+          return [
+            await write('PUT', '/api/account/place', { place }),
+            await write('PUT', '/api/account/partner', {
+              date: '1988-11-02', time: '21:05:30', place, gender: 'male', zi: 'split_midnight',
+            }),
+          ];
+        }, place);
+        assert.deepEqual(statuses, [200, 200]);
+        const failures = [];
+        const inspect = async (state) => {
+          await settled(page);
+          const found = [
+            ...await page.evaluate(() => window.__ecAudit.contrastFailures()),
+            ...await fontFamilyFailures(page, BRAND_FAMILIES),
+          ];
+          failures.push(...found.map((failure) => `${state}: ${failure}`));
+        };
+        const shown = async (selector) => {
+          await page.locator(selector).waitFor({ state: 'visible' });
+          await page.waitForFunction((selector) => !document.querySelector(selector).hasAttribute('aria-busy'), selector);
+        };
+        for (const lang of ['en', 'fi']) {
+          const chart = new URLSearchParams({
+            date: '1975-08-14', time: '07:45', place: HELSINKI.display, city: HELSINKI.city,
+            latitude: String(HELSINKI.latitude), longitude: String(HELSINKI.longitude), timezone: HELSINKI.timezone,
+            lang, gender: 'female',
+          });
+          for (const topic of ['day', 'marriage', 'work', 'health', 'pillar/luck']) {
+            await page.goto(new URL(`/#today?${chart}&day=2026-10-11&topic=${topic}`, process.env.EC_BASE_URL).href);
+            await shown('#today-view');
+            assert.equal(await page.locator('#today-body').isVisible(), true, `${lang} ${topic}`);
+            await inspect(`${lang} Today, ${topic}`);
+          }
+          await page.goto(new URL('/#settings', process.env.EC_BASE_URL).href);
+          await shown('#settings-view');
+          await inspect(`${lang} Settings`);
+        }
+        assert.deepEqual([...new Set(failures)], []);
+      }));
+    }
+
     // The account dialog, signed in (the account, with deleting it open) and signed out
     // (creating an account and the code, each with what to fix), in both languages.
     for (const scheme of ['light', 'dark']) {
