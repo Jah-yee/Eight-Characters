@@ -4,7 +4,7 @@
 // one made from settings another tab has changed since is refused, and the page shows
 // the settings as they are.
 import {
-  assert, describe, it, engineName, profiles, openLink, settled, withPage, playwright, HELSINKI,
+  assert, describe, it, engineName, profiles, openLink, settled, withPage, playwright, HELSINKI, TROMSO,
 } from './chart-helpers.mjs';
 import { newAccount, asAccount, signInPage, stubTurnstile } from './account-helpers.mjs';
 import { dialogOpens, signInThroughDialog } from './account-page.mjs';
@@ -95,6 +95,29 @@ for (const profile of profiles) {
       await page.waitForFunction(() => document.getElementById('settings-place-now').textContent.startsWith('No place'));
       assert.equal((await read(page)).place, null);
       assert.equal(await page.locator('#settings-place-remove').isHidden(), true);
+    });
+
+    check('a place picked while the one before is saved stays picked', async (page) => {
+      await reset(page);
+      await page.route('**/api/location_suggest', (route) => route.fulfill({ json: { suggestions: [HELSINKI, TROMSO] } }));
+      // The save is held on its way until the next place is picked.
+      let release;
+      const held = new Promise((resolve) => { release = resolve; });
+      await page.route('**/api/account/place', async (route) => {
+        if (route.request().method() === 'PUT') await held;
+        await route.fallback();
+      });
+      await openSettings(page);
+      await page.locator('#settings-location').fill('Hel');
+      await page.locator('#settings-location-suggestions .location-suggestion').first().click();
+      await page.locator('#settings-place-save').click();
+      await page.locator('#settings-location').fill('Tro');
+      await page.locator('#settings-location-suggestions .location-suggestion').nth(1).click();
+      release();
+      await page.waitForFunction(() => document.getElementById('settings-place-now').textContent.startsWith('Now:'));
+      assert.equal((await read(page)).place.city, HELSINKI.city);
+      assert.equal(await page.locator('#settings-location').inputValue(), TROMSO.display);
+      assert.equal(await page.locator('#settings-place-save').isDisabled(), false);
     });
 
     check('a school is chosen, and choosing the default follows it again', async (page) => {
@@ -270,6 +293,33 @@ describe(`${engineName} / settings signed out`, { concurrency: false }, () => {
     await page.goto(new URL('/#settings', process.env.EC_BASE_URL).href);
     await page.locator('#account-dialog').waitFor({ state: 'visible' });
     assert.equal(await page.locator('#settings-view').isHidden(), true);
+  }, { signedIn: false }));
+
+  it('after a sign-out, Settings show nothing of the account before, even when the next read fails', { timeout: 120000 }, () => withPage(profiles[0], async (page) => {
+    const first = await newAccount(playwright, { language: 'en', label: 'settings-first' });
+    const second = await newAccount(playwright, { language: 'en', label: 'settings-second' });
+    await asAccount(playwright, first, async (request) => {
+      const kept = await request.put('/api/account/place', { data: { place: PLACE, key: first.key, updated_at: null } });
+      assert.equal(kept.status(), 200, await kept.text());
+    });
+    await signInPage(page, first);
+    await stubTurnstile(page);
+    await openSettings(page);
+    assert.match(await page.locator('#settings-place-now').textContent(), /^Now:/);
+    await page.locator('#account-btn').click();
+    await page.locator('#account-sign-out').click();
+    await page.waitForFunction(() => document.getElementById('settings-view').classList.contains('hidden'));
+    // Signed in to another account in the same page, whose settings cannot be read now.
+    await signInThroughDialog(page, second.email);
+    await page.route('**/api/account/settings', (route) => route.fulfill({ status: 500, json: { detail: 'Stopped by the test.' } }));
+    await page.locator('#account-btn').click();
+    await page.locator('#account-settings').click();
+    await page.locator('#settings-status').waitFor({ state: 'visible' });
+    assert.equal(await page.locator('#settings-status').textContent(), 'Stopped by the test.');
+    assert.equal(await page.locator('#settings-view [data-settings-action]').count(), 0);
+    assert.equal(await page.locator('#settings-place-now').textContent(), '');
+    assert.equal(await page.locator('#settings-place-remove').isHidden(), true);
+    assert.equal(await page.locator('#settings-schools-body input').count(), 0);
   }, { signedIn: false }));
 
   it('a change after the session ended elsewhere asks for a sign-in, and is not repeated', { timeout: 90000 }, () => withPage(profiles[0], async (page) => {

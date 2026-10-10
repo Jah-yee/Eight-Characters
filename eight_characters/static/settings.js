@@ -147,7 +147,8 @@
       return inTurn(async () => {
         try {
           if (from !== basis) return replaced;
-          if (settings === null) await read();
+          // No settings read, none shown: nothing is changed from controls left over.
+          if (settings === null) return t('settings_load_error');
           const value = checked(await call(method, path, { ...body, key: settings.key, updated_at: settings.updated_at }));
           settings = value;
           onChanged(settings);
@@ -372,14 +373,16 @@
     placeForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       if (picked === null) return;
+      const saving = picked;
       const place = {
-        name: picked.display,
-        city: picked.city,
-        timezone: picked.timezone,
-        latitude: picked.latitude,
-        longitude: picked.longitude,
+        name: saving.display,
+        city: saving.city,
+        timezone: saving.timezone,
+        latitude: saving.latitude,
+        longitude: saving.longitude,
       };
-      if (await change('PUT', '/api/account/place', { place }, t('settings_place_saved'))) {
+      // Saved, the search is cleared, unless another place was picked or typed meanwhile.
+      if (await change('PUT', '/api/account/place', { place }, t('settings_place_saved')) && picked === saving) {
         picked = null;
         placeInput.value = '';
         placeSave.disabled = true;
@@ -474,13 +477,25 @@
       current: () => settings,
       savePartner,
       partnerName,
-      // A sign-out forgets what was read for the account, and the changes still waiting
-      // are not made.
+      // A sign-out forgets what was read for the account and leaves nothing of it on the
+      // page, and the changes still waiting are not made.
       forget: () => {
         settings = null;
         generation += 1;
         basis += 1;
         replaced = t('account_session_ended');
+        partnerBody.innerHTML = '';
+        placeNow.textContent = '';
+        placeRemove.classList.add('hidden');
+        schoolsBody.innerHTML = '';
+        clearTimeout(debounce);
+        lookup?.abort();
+        picked = null;
+        placeInput.value = '';
+        placeSave.disabled = true;
+        setPlaceStatus('');
+        closeList();
+        say('');
       },
       // The page's language changed: the schools are written in it.
       redraw: () => {

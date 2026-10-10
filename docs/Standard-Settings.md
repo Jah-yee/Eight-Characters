@@ -29,7 +29,8 @@ link, with its pass of an hour the clocks repeat where the saved birth names one
 
 A place search of its own, as the birth form's: choose a place from the list and save
 it. The hours of a day are reckoned for it. Remove forgets it. Nothing is guessed from
-the browser.
+the browser. A place picked while the one before is being saved stays in the search,
+to be saved in turn.
 
 ## The schools
 
@@ -47,6 +48,8 @@ since is refused, and so are the changes made after it from the same settings: t
 shows the settings as they are now, to be chosen again. A session that ended asks for a
 sign-in, and the change is not repeated. Another account signed in in this browser, and
 a change the API refuses, are each said on the page. Focus stays on the preset or action
-that had it, or, once that is gone, on the first control of its part.
+that had it, or, once that is gone, on the first control of its part. A sign-out leaves
+nothing of the account on the page, and until the settings are read again nothing can be
+changed.
 
 See [browser regression tests](../tests/browser/README.md): `settings.test.mjs`.
