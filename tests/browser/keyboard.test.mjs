@@ -249,7 +249,7 @@ for (const profile of profiles) {
 
     check('every control of the chart is reached by Tab, the cards at one stop', async (page) => {
       await openChart(page, { lang: 'en' });
-      await page.locator('#display-switch button').first().focus();
+      await page.locator('#page-switch button').first().focus();
       const reached = [];
       for (let presses = 0; presses < 40; presses += 1) {
         const inChart = await page.evaluate(() => document.getElementById('chart-view').contains(document.activeElement));
@@ -257,9 +257,11 @@ for (const profile of profiles) {
         reached.push(await focused(page));
         await press(page, TAB);
       }
-      assert.deepEqual(reached, ['Characters', 'Ten Gods', 'Hidden stems', 'Standard', 'Evolution', 'FI', 'EN',
+      assert.deepEqual(reached, ['Chart', 'Today', 'Characters', 'Ten Gods', 'Hidden stems', 'Standard', 'Evolution',
+        'FI', 'EN',
         // In English the Day Master line opens the Day Master's page of readings.
-        'copy-link-btn', 'copy-text-btn', 'back-btn', 'new-chart-btn', 'compare-btn', 'Day Master · Ji — Yin Earth',
+        'copy-link-btn', 'copy-text-btn', 'back-btn', 'new-chart-btn', 'compare-btn', 'save-partner-btn',
+        'Day Master · Ji — Yin Earth',
         'Chou month', 'Roots in 3 branches', 'Roles', 'relationships-topic',
         '壬申 Ren Shen', 'hour stem', '己丑 Ji Chou', '癸丑 Gui Chou', '丁卯 Ding Mao']);
     });

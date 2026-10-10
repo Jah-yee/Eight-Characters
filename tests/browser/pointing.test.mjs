@@ -41,7 +41,7 @@ async function rest(page, locator) {
 
 // Somewhere that names nothing: the chart's bar.
 async function away(page) {
-  const bar = await page.locator('.chart-identity').boundingBox();
+  const bar = await page.locator('#chart-view .chart-identity').boundingBox();
   await page.mouse.move(bar.x + 4, bar.y + 4);
 }
 
