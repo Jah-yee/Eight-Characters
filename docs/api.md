@@ -566,8 +566,10 @@ The explorer page reads the birth from its URL and calls this endpoint. The
 start page links to it with the picked place's coordinates:
 `/explorer/?date=1988-02-04&time=15:40&latitude=26.36828&longitude=115.34289&timezone=Asia%2FShanghai`.
 Links with `city` and `country` instead of the coordinates, made before the
-coordinates were passed, still work in mode B. A link with only part of the
-date, time or place, or with both coordinates and a city, shows an error;
+coordinates were passed, still work in mode B. A chart whose link names a `fold`
+(a time the place's clocks repeat) passes it on, `0` or `1`. A link with only part
+of the date, time or place, with both coordinates and a city, or with another
+`fold`, shows an error;
 `/explorer/` with no birth in the URL shows a bundled sample chart.
 
 ### `GET /api/schools`

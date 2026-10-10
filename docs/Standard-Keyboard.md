@@ -66,13 +66,21 @@ focus that was on them goes to the chart's cards. See
     a chart with a gender the years before the luck pillars and each decade, which
     open as a link opens them, in one step of the history;
   - the display, the other language and the Evolution view;
-  - Copy link, Copy as text, Edit, New chart, Compare, Print, Close (when a topic is
-    open) and Keys.
+  - Copy link, Copy as text, Edit, New chart, Compare, Save as partner, Print, Close
+    (when a topic is open), Keys and Settings.
 
   In a comparison, each chart's commands are its own: its topics, its display, Copy
   as text and Print; the comparison's bar holds the rest.
 - Escape in a dialog closes the dialog only; an open topic stays open. Focus returns to
   where it was.
+
+## Today
+
+On [Today](Standard-Today.md), while its page has focus and no field does, `[` and `]`
+step to the day before and after, N goes to today where you are, Escape closes a topic
+and ? lists the day's keys. Brackets are typed with Alt or AltGr on many keyboards; a
+held key steps once. ⌘K or Ctrl+K holds the day's own commands: the steps, the
+partner's day, its topics, the chart, Copy link, Copy as text, Print and Settings.
 
 ## The panel
 
