@@ -74,7 +74,8 @@ and Chart · Today, add to the history. Only the answer to the latest request is
 The chart, from Today's bar or its commands, opens in the language the day is shown in.
 A link opened signed out asks for a sign-in, and the day is then shown in the account's
 language, which its address then names; a session that ends while the day is open asks
-for a sign-in when the day is next asked for. Marriage, open when the partner's chart is
+for a sign-in when the day is next asked for. A sign-out leaves nothing of the account's
+day on the page: neither where you are nor a partner's name. Marriage, open when the partner's chart is
 removed elsewhere (or no longer charts), closes, and the page says why.
 
 ## Keys and commands
@@ -82,7 +83,7 @@ removed elsewhere (or no longer charts), closes, and the page says why.
 While the page has focus and no field does: `[` and `]` the day before and after, N
 today where you are, Escape closes a topic, ? lists the day's keys. A topic, a day of the
 run or an action chosen from the keyboard keeps the focus on its button once the day is
-drawn again. Brackets are typed with
+drawn again; Today, which is then unavailable, hands it to the day's heading. Brackets are typed with
 Alt or AltGr on many keyboards; a held key steps once. The commands (⌘K or Ctrl+K) hold
 the steps, the partner's day, the topics, the chart, Copy link, Copy as text and Print
 (once the day is drawn) and Settings.

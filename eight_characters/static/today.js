@@ -422,13 +422,15 @@
     // counterpart in the new markup (the same topic, day or action), or, gone, to the
     // day's heading, so that focus stays on the page and its keys keep working.
     const COUNTERPARTS = [['todayTopic', 'data-today-topic'], ['todayDay', 'data-today-day'], ['todayAction', 'data-today-action']];
+    // A control can take focus while it is in the page, shown and enabled.
+    const focusable = (node) => node.isConnected && !node.closest('.hidden') && !node.disabled;
     const keepingFocus = (change) => {
       const focused = view.contains(document.activeElement) ? document.activeElement : null;
       change();
-      if (focused === null || (focused.isConnected && !focused.closest('.hidden'))) return;
+      if (focused === null || (document.activeElement === focused && focusable(focused))) return;
       const pair = COUNTERPARTS.find(([key]) => focused.dataset?.[key] !== undefined);
       const counterpart = pair ? view.querySelector(`[${pair[1]}="${CSS.escape(focused.dataset[pair[0]])}"]`) : null;
-      (counterpart !== null && !counterpart.closest('.hidden') ? counterpart : dateHeading).focus();
+      (counterpart !== null && focusable(counterpart) ? counterpart : dateHeading).focus();
     };
     // The day is copied as text and printed only once its own answer is drawn. Until
     // then the two say they are unavailable, and keep their focus.
@@ -455,13 +457,15 @@
       const mine = ++asked;
       view.classList.remove('hidden');
       view.setAttribute('aria-busy', 'true');
-      keepingFocus(clearNotice);
-      drawBar();
+      keepingFocus(() => {
+        clearNotice();
+        drawBar();
+      });
       try {
         const kept = await settings.load(() => mine === asked);
         if (mine !== asked) return;
         shownSettings = kept;
-        drawBar();
+        keepingFocus(drawBar);
         if (!state.chart.gender) {
           instead(t('today_needs_gender'), [['edit', t('edit_chart')]]);
           return;
@@ -667,6 +671,23 @@
       isShown: () => state !== null,
       // The current state, for the address: null while Today is not shown.
       state: () => state,
+      // A sign-out forgets the settings read for the account and leaves nothing of its day
+      // on the page.
+      forget: () => {
+        hide();
+        shownSettings = null;
+        dateHeading.textContent = '';
+        chartLine.textContent = '';
+        partnerLabel.textContent = '';
+        whoSwitch.classList.add('hidden');
+        clearNotice();
+        body.classList.add('hidden');
+        for (const part of [pullLine, topics, run, pillars, inChart, hours]) part.replaceChildren();
+        panel.classList.add('hidden');
+        view.classList.remove('has-panel');
+        detail.replaceChildren();
+        status.textContent = '';
+      },
       // Settings changed: the day is asked for again with them.
       refresh: () => {
         if (state !== null) show(state);

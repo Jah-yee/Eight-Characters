@@ -887,7 +887,7 @@ document.addEventListener('DOMContentLoaded', () => {
       compare.hide();
       settingsPage.forget();
       settingsPage.hide();
-      today.hide();
+      today.forget();
       askForChart();
       leaveChart();
       addressForm('replaceState');

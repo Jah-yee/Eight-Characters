@@ -275,6 +275,16 @@ for (const profile of profiles) {
       await shown(page);
       assert.equal(await part(page, 'day'), '2026-10-14');
       assert.equal(await page.evaluate(() => document.activeElement?.dataset.todayDay), '2026-10-14');
+      // Today, pressed from the keyboard, is then disabled: the day's heading takes focus.
+      await page.locator('[data-today-now]').focus();
+      await page.keyboard.press('Enter');
+      await shown(page);
+      assert.equal(await part(page, 'day'), DAY);
+      assert.equal(await page.locator('[data-today-now]').isDisabled(), true);
+      assert.equal(await page.evaluate(() => document.activeElement?.id), 'today-date');
+      await page.keyboard.press(']');
+      await shown(page);
+      assert.equal(await part(page, 'day'), '2026-10-12');
     });
 
     check('the day in another language opens the chart in it', async (page) => {
@@ -526,6 +536,45 @@ describe(`${engineName} / today and the session`, { concurrency: false }, () => 
     assert.equal(await part(page, 'day'), '2026-10-12');
     assert.equal(await page.locator('#today-body').isVisible(), true);
     assert.equal(await page.locator('#today-notice').isHidden(), true);
+  }, { signedIn: false }));
+
+  it('after a sign-out, the day shows nothing of the account before, even when the next read fails', { timeout: 120000 }, () => withPage(profiles[0], async (page) => {
+    await page.clock.setFixedTime(NOW);
+    const first = await ownAccount(page, 'en', 'today-first');
+    const second = await newAccount(playwright, { language: 'en', label: 'today-second' });
+    await asAccount(playwright, first, async (request) => {
+      const read = await (await request.get('/api/account/settings')).json();
+      const kept = await request.put('/api/account/partner', {
+        data: { ...PARTNER, name: 'First partner', key: first.key, updated_at: read.updated_at },
+      });
+      assert.equal(kept.status(), 200, await kept.text());
+    });
+    await signInPage(page, first);
+    await recordToday(page);
+    await page.goto(new URL(todayLink(), process.env.EC_BASE_URL).href);
+    await shown(page);
+    assert.match(await page.locator('#today-chart').textContent(), /at Helsinki/);
+    assert.equal(await page.locator('.today-who-name').textContent(), 'First partner');
+    // To the start page, whose account menu signs out; the page stays as it is.
+    await page.locator('#today-page-switch [data-page="chart"]').click();
+    await page.locator('#chart-view').waitFor({ state: 'visible' });
+    await page.locator('#new-chart-btn').click();
+    await page.locator('#account-btn').click();
+    await page.locator('#account-sign-out').click();
+    // Signed in to another account in the same page, whose settings cannot be read now.
+    await signInThroughDialog(page, second.email);
+    await page.route('**/api/account/settings', (route) => route.fulfill({ status: 500, json: { detail: 'Stopped by the test.' } }));
+    await page.evaluate((hash) => {
+      history.pushState(null, '', hash);
+      dispatchEvent(new PopStateEvent('popstate'));
+    }, todayLink().slice(1));
+    await page.locator('#today-notice').waitFor({ state: 'visible' });
+    assert.match(await page.locator('#today-notice').textContent(), /Stopped by the test\./);
+    // The chart's own heading names its birth city; where you are is not said.
+    assert.doesNotMatch(await page.locator('#today-chart').textContent(), /at Helsinki/);
+    assert.equal(await page.locator('#today-who').isHidden(), true);
+    assert.equal(await page.locator('.today-who-name').textContent(), '');
+    assert.equal(await page.locator('#today-body').isHidden(), true);
   }, { signedIn: false }));
 
   it('signed in on a day’s link, the day is in the account’s language, and so is its address', { timeout: 120000 }, () => withPage(profiles[0], async (page) => {
