@@ -306,9 +306,26 @@ describe(`${engineName} / settings signed out`, { concurrency: false }, () => {
     await stubTurnstile(page);
     await openSettings(page);
     assert.match(await page.locator('#settings-place-now').textContent(), /^Now:/);
+    // A change the server makes, whose answer reaches the page only after the sign-out.
+    let deliver;
+    const delivered = new Promise((resolve) => { deliver = resolve; });
+    let answered;
+    const fetched = new Promise((resolve) => { answered = resolve; });
+    await page.route('**/api/account/schools', async (route) => {
+      if (route.request().method() !== 'PATCH') return route.fallback();
+      const response = await route.fetch();
+      answered();
+      await delivered;
+      return route.fulfill({ response });
+    });
+    await page.locator('#settings-favourable-climate').click();
+    await fetched;
+    // Back on the start page, whose account menu signs out; the page stays as it is.
+    await page.locator('#settings-close').click();
     await page.locator('#account-btn').click();
     await page.locator('#account-sign-out').click();
-    await page.waitForFunction(() => document.getElementById('settings-view').classList.contains('hidden'));
+    deliver();
+    await page.waitForFunction(() => document.getElementById('settings-status').textContent === 'Your session ended. Sign in again.');
     // Signed in to another account in the same page, whose settings cannot be read now.
     await signInThroughDialog(page, second.email);
     await page.route('**/api/account/settings', (route) => route.fulfill({ status: 500, json: { detail: 'Stopped by the test.' } }));

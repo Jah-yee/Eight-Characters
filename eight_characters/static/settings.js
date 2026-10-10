@@ -145,15 +145,20 @@
       const from = basis;
       waiting += 1;
       return inTurn(async () => {
+        // A sign-out while the change is on its way: its answer is the account's before,
+        // and is neither taken nor drawn, and a refusal asks for no sign-in.
+        const at = generation;
         try {
           if (from !== basis) return replaced;
           // No settings read, none shown: nothing is changed from controls left over.
           if (settings === null) return t('settings_load_error');
           const value = checked(await call(method, path, { ...body, key: settings.key, updated_at: settings.updated_at }));
+          if (at !== generation) return t('account_session_ended');
           settings = value;
           onChanged(settings);
           return null;
         } catch (err) {
+          if (at !== generation) return t('account_session_ended');
           // A change not made, for whatever reason, stops the changes waiting behind it:
           // they were made from the settings it was to leave.
           basis += 1;
@@ -176,7 +181,7 @@
           return err.message;
         } finally {
           waiting -= 1;
-          if (waiting === 0) draw();
+          if (waiting === 0 && at === generation) draw();
         }
       });
     };
