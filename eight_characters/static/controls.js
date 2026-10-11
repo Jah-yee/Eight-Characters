@@ -247,11 +247,13 @@
       const node = trigger(event.target);
       if (active && active !== node && !tip.contains(event.target)) hide();
       if (event.pointerType !== 'touch' || !node || !info(node).only || node.matches(':disabled')) return;
-      cancelHover(); clearTimeout(exitTimer); touch = { node, x: event.clientX, y: event.clientY, shown: false };
+      cancelHover(); clearTimeout(exitTimer); touch = { node, id: event.pointerId, x: event.clientX, y: event.clientY, shown: false };
       hoverTimer = setTimeout(() => { if (touch) { touch.shown = true; show(touch.node); } }, 500);
     }, true);
+    // A hold is its finger's alone: another pointer's events leave it, such as the mouse
+    // pointer WebKit moves back to the last tap's place after a scroll.
     document.addEventListener('pointermove', event => {
-      if (touch && Math.hypot(event.clientX - touch.x, event.clientY - touch.y) > 10) { cancelHover(); if (touch.shown) hide(); touch = null; }
+      if (touch?.id === event.pointerId && Math.hypot(event.clientX - touch.x, event.clientY - touch.y) > 10) { cancelHover(); if (touch.shown) hide(); touch = null; }
       if (event.pointerType === 'touch') return;
       const inside = overTip(event);
       if (inside) { cancelHover(); clearTimeout(exitTimer); }
@@ -262,13 +264,13 @@
       }
       hoveringTip = inside;
     });
-    document.addEventListener('pointerup', () => {
-      if (!touch) return;
+    document.addEventListener('pointerup', event => {
+      if (touch?.id !== event.pointerId) return;
       cancelHover();
       if (touch.shown) suppressedClick = { node: touch.node, until: performance.now() + 600 };
       touch = null;
     }, true);
-    document.addEventListener('pointercancel', () => { cancelHover(); touch = null; hide(); });
+    document.addEventListener('pointercancel', event => { if (touch && touch.id !== event.pointerId) return; cancelHover(); touch = null; hide(); });
     document.addEventListener('click', event => {
       if (suppressedClick && performance.now() < suppressedClick.until && suppressedClick.node.contains(event.target)) {
         event.preventDefault(); event.stopImmediatePropagation(); suppressedClick = null;
