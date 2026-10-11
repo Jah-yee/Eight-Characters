@@ -1,7 +1,7 @@
 """What GET /api/schools says of each school: the three settings and their presets, in
 Finnish and English, with their sources and their defaults (docs/Today.md).
 
-The Finnish names and summaries are provisional until confirmed.
+The owner confirmed the Finnish names and summaries on 2026-10-11.
 """
 
 from typing import Final, Literal
@@ -257,4 +257,4 @@ def school_catalog() -> Catalog:
         'transits': list(TRANSIT_SCHOOLS),
     }:
         raise RuntimeError('The catalogue does not list exactly the schools offered.')
-    return {'finnish_provisional': True, 'settings': settings}
+    return {'finnish_provisional': False, 'settings': settings}

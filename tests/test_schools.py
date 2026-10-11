@@ -521,7 +521,8 @@ class TestPull(unittest.TestCase):
 class TestCatalog(unittest.TestCase):
     def test_every_preset_with_both_languages_its_sources_and_one_default(self) -> None:
         catalog = school_catalog()
-        self.assertTrue(catalog['finnish_provisional'])
+        # The owner confirmed the Finnish wording on 2026-10-11.
+        self.assertFalse(catalog['finnish_provisional'])
         listed = {
             setting['id']: [preset['id'] for preset in setting['presets']]
             for setting in catalog['settings']
