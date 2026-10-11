@@ -103,10 +103,11 @@ touch hold's 10px), and never from the screen's left edge, which is iOS's Back. 
 the day moves by as many days as it went, one at least; let go less than 40px from where
 it started, even after going further, it moves nothing.
 Up and down stays the page's scrolling. A press that went more than 10px, up and down
-included, is no press: the click that ends it opens nothing. A cancel, a lost capture
-or another pointer, of any kind (a touch during a mouse's drag too), moves nothing; a
-mouse let go off the days before its drag began leaves the next drag as it would be. A
-step slides the days in
+included, is no press: the click that ends it opens nothing. A cancel or a lost capture
+moves nothing. Another pointer pressed with it, of any kind (a touch during a mouse's
+drag too), spoils the press: nothing moves, and no click opens a day until a press
+starts alone. A mouse let go off the days before its drag began leaves the next drag as
+it would be. A step slides the days in
 280ms; a pick far away slides one step's distance, never through the days between.
 With reduced motion, the days change in place.
 

@@ -714,7 +714,8 @@ for (const profile of profiles) {
       await page.mouse.up();
       await page.waitForTimeout(100);
       assert.equal(await part(page, 'day'), stay);
-      // A touch while the mouse drags: neither moves the days, the touch neither.
+      // A touch while the mouse drags: neither moves the days, the touch neither, and its
+      // tap's click on a neighbour picks nothing.
       await page.mouse.move(x, y);
       await page.mouse.down();
       await page.mouse.move(x - 80, y);
@@ -722,6 +723,7 @@ for (const profile of profiles) {
       await page.locator('.today-days-track').dispatchEvent('pointerdown', touch);
       await page.locator('.today-days-track').dispatchEvent('pointermove', { ...touch, clientX: x - 200 });
       await page.locator('.today-days-track').dispatchEvent('pointerup', { ...touch, clientX: x - 200, buttons: 0 });
+      await page.locator('.today-day[data-place="1"]').dispatchEvent('click');
       await page.mouse.move(x - 200, y);
       await page.mouse.up();
       await page.waitForTimeout(100);
@@ -750,6 +752,10 @@ for (const profile of profiles) {
       await page.mouse.up();
       await shown(page);
       assert.equal(await part(page, 'day'), run[at + 2].date);
+      // A press alone after all these picks again: a neighbour pressed is picked.
+      await page.locator('.today-day[data-place="1"]').click();
+      await shown(page);
+      assert.equal(await part(page, 'day'), run[at + 3].date);
     });
 
     check('with reduced motion the days change in place, and still move', async (page) => {

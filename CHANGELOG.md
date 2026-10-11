@@ -10,8 +10,9 @@ The new Today (#80): the day in the chart's own cards and colours (#77, slice 3)
   two days of the run on either side, smaller, one on a phone. Left and Right step
   while they have focus, Home and End go to the run's ends, a press picks a neighbour,
   and a swipe or drag steps by the days it went, asking once when let go; let go within
-  40px of its start it moves nothing, and another pointer (a touch during a mouse's drag
-  too) cancels it. A press that went more than 10px opens nothing. The days move at
+  40px of its start it moves nothing, and another pointer pressed with it (a touch
+  during a mouse's drag too) cancels it, its tap included. A press that went more than
+  10px opens nothing. The days move at
   once only through the run drawn for the chart, language and person shown. Reduced
   motion moves nothing.
 - **The pull as a scale**, from −3.5 to +3.5 for every day and layer, its ends named in
