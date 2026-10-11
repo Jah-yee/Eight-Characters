@@ -389,14 +389,24 @@ for (const profile of profiles) {
             });
             return response.status;
           };
+          // The chart the day is read for, saved and paired with a partner: a couple, in
+          // a library emptied first (each scheme saves them again).
+          for (const chart of (await (await fetch('/api/account/settings')).json()).charts) {
+            await write('DELETE', `/api/account/charts/${chart.id}`, {});
+          }
+          const self = await write('POST', '/api/account/charts', {
+            date: '1975-08-14', time: '07:45', place, gender: 'female', zi: 'split_midnight',
+          });
+          const saved = (await (await fetch('/api/account/settings')).json()).charts.at(-1).id;
           return [
             await write('PUT', '/api/account/place', { place }),
-            await write('PUT', '/api/account/partner', {
-              date: '1988-11-02', time: '21:05:30', place, gender: 'male', zi: 'split_midnight',
+            self,
+            await write('POST', '/api/account/charts', {
+              date: '1988-11-02', time: '21:05:30', place, gender: 'male', zi: 'split_midnight', couple_with: saved,
             }),
           ];
         }, place);
-        assert.deepEqual(statuses, [200, 200]);
+        assert.deepEqual(statuses, [200, 201, 201]);
         const failures = [];
         const inspect = async (state) => {
           await settled(page);

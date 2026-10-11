@@ -1,8 +1,9 @@
 // Run with Node's built-in test runner and an explicitly selected Playwright install.
 // Today: the day of the chart on screen (docs/Standard-Today.md). Every number the page
-// shows is the API's (POST /api/today), asked for with the partner's chart, the place
-// and the schools the account keeps. The address names the chart, the day, whose day
-// and the topic; a step replaces it and a topic adds to it; late answers are dropped.
+// shows is the API's (POST /api/today), asked for with the place and the schools the
+// account keeps and, when the chart on screen is saved in a couple, the other chart of
+// the couple. The address names the chart, the day, whose day and the topic; a step
+// replaces it and a topic adds to it; late answers are dropped.
 import {
   assert, describe, it, engineName, profiles, openLink, settled, withPage, playwright, HELSINKI,
 } from './chart-helpers.mjs';
@@ -38,23 +39,34 @@ const score = (value) => new Intl.NumberFormat('en', {
 }).format(value);
 const pull = (value) => `${BANDS[value.band]} (${score(value.score)})`;
 
-// The account's settings, changed from the page as Settings changes them.
+// The chart on screen as the library keeps it.
+const SELF = { date: CHART.date, time: CHART.time, place: PLACE, gender: CHART.gender, zi: 'split_midnight' };
+// The account's settings, changed from the page as Settings changes them: where you are
+// and, with a partner, the chart on screen and the partner saved as a couple. Every
+// chart saved before is removed first.
 async function setSettings(page, { place = PLACE, partner = null } = {}) {
-  const statuses = await page.evaluate(async ({ place, partner }) => {
+  const statuses = await page.evaluate(async ({ place, partner, self }) => {
     const write = async (method, path, body) => {
       const read = await (await fetch('/api/account/settings')).json();
       const response = await fetch(path, {
         method, headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...body, key: read.key, updated_at: read.updated_at }),
       });
-      return response.status;
+      return { status: response.status, value: await response.json() };
     };
-    return [
-      place === null ? await write('DELETE', '/api/account/place', {}) : await write('PUT', '/api/account/place', { place }),
-      partner === null ? await write('DELETE', '/api/account/partner', {}) : await write('PUT', '/api/account/partner', partner),
-    ];
-  }, { place, partner });
-  assert.deepEqual(statuses, [200, 200]);
+    const results = [];
+    for (const chart of (await (await fetch('/api/account/settings')).json()).charts) {
+      results.push((await write('DELETE', `/api/account/charts/${chart.id}`, {})).status);
+    }
+    results.push((place === null ? await write('DELETE', '/api/account/place', {}) : await write('PUT', '/api/account/place', { place })).status);
+    if (partner !== null) {
+      const mine = await write('POST', '/api/account/charts', self);
+      results.push(mine.status);
+      results.push((await write('POST', '/api/account/charts', { ...partner, couple_with: mine.value.saved })).status);
+    }
+    return results;
+  }, { place, partner, self: SELF });
+  assert.ok(statuses.every((status) => status === 200 || status === 201), statuses.join());
 }
 // Every answer to POST /api/today, with what the page asked; `hold` keeps one back.
 async function recordToday(page) {
@@ -398,7 +410,7 @@ for (const profile of profiles) {
       assert.equal(await page.locator('#today-body').isVisible(), true);
       assert.equal(await page.locator('#today-panel').isHidden(), true);
       assert.equal(await page.locator('[data-today-topic="marriage"]').count(), 0);
-      assert.match(await page.locator('#today-notice').textContent(), /no longer saved/);
+      assert.match(await page.locator('#today-notice').textContent(), /not in a couple/);
     });
 
     check('the partner’s day: the switch carries the name as text, and Marriage reads both charts', async (page) => {
@@ -412,6 +424,8 @@ for (const profile of profiles) {
       assert.equal(await page.locator('.today-who-name').textContent(), PARTNER.name);
       assert.equal(await page.evaluate(() => window.__named), undefined, 'a name is text');
       assert.equal(answers.at(-1).request.charts.partner.name, PARTNER.name);
+      // The partner's birth alone: no library id, no drawn pillars.
+      assert.equal(answers.at(-1).request.charts.partner.id, undefined);
       assert.equal(answers.at(-1).request.charts.partner.pillars, undefined);
       await page.locator('[data-today-topic="marriage"]').click();
       await shown(page);
@@ -426,7 +440,7 @@ for (const profile of profiles) {
       await setSettings(page);
       await page.reload();
       await page.locator('#today-notice').waitFor({ state: 'visible' });
-      assert.match(await page.locator('#today-notice').textContent(), /no longer saved/);
+      assert.match(await page.locator('#today-notice').textContent(), /not in a couple/);
       await page.locator('[data-today-action="self"]').click();
       await shown(page);
       assert.equal(await part(page, 'who'), null);
@@ -564,11 +578,13 @@ describe(`${engineName} / today and the session`, { concurrency: false }, () => 
     const first = await ownAccount(page, 'en', 'today-first');
     const second = await newAccount(playwright, { language: 'en', label: 'today-second' });
     await asAccount(playwright, first, async (request) => {
-      const read = await (await request.get('/api/account/settings')).json();
-      const kept = await request.put('/api/account/partner', {
-        data: { ...PARTNER, name: 'First partner', key: first.key, updated_at: read.updated_at },
+      const mine = await request.post('/api/account/charts', { data: { ...SELF, key: first.key, updated_at: null } });
+      assert.equal(mine.status(), 201, await mine.text());
+      const { saved, updated_at: read } = await mine.json();
+      const kept = await request.post('/api/account/charts', {
+        data: { ...PARTNER, name: 'First partner', couple_with: saved, key: first.key, updated_at: read },
       });
-      assert.equal(kept.status(), 200, await kept.text());
+      assert.equal(kept.status(), 201, await kept.text());
     });
     await signInPage(page, first);
     await recordToday(page);
@@ -614,9 +630,9 @@ describe(`${engineName} / today and the session`, { concurrency: false }, () => 
 });
 
 describe(`${engineName} / today in a comparison`, { concurrency: false }, () => {
-  it('a compared chart has no Chart · Today and no Save as partner', { timeout: 120000 }, () => withPage(profiles[0], async (page) => {
+  it('a compared chart has no Chart · Today and no library', { timeout: 120000 }, () => withPage(profiles[0], async (page) => {
     await openLink(page, `/?embed=1#chart?${chartParams()}`, { place: HELSINKI });
     assert.equal(await page.locator('#page-switch').isHidden(), true);
-    assert.equal(await page.locator('#save-partner-btn').isHidden(), true);
+    assert.equal(await page.locator('#library-btn').isHidden(), true);
   }));
 });

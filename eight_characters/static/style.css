@@ -3202,7 +3202,7 @@ body:has(> .compare-container:not(.hidden)) { padding: var(--space-4); }
   overflow-wrap: anywhere;
 }
 .saved-mark {
-  padding: 1px var(--space-2);
+  padding: 0 var(--space-2);
   border: 1px solid var(--line-2);
   border-radius: 999px;
   font-size: var(--text-1);
@@ -3219,12 +3219,12 @@ body:has(> .compare-container:not(.hidden)) { padding: var(--space-4); }
   display: flex;
   gap: var(--space-2);
 }
-.saved-pillar { display: grid; gap: 3px; }
+.saved-pillar { display: grid; gap: var(--space-1); }
 .saved-glyph {
   display: grid;
   justify-items: center;
   width: 46px;
-  padding: 3px 0 4px;
+  padding: var(--space-1) 0;
   background: var(--sheen), var(--el-bg);
   color: var(--el-text);
 }
@@ -3236,7 +3236,7 @@ body:has(> .compare-container:not(.hidden)) { padding: var(--space-4); }
 .saved-glyph.metal { --el-bg: var(--metal-bg); --el-text: var(--metal-text); }
 .saved-glyph.water { --el-bg: var(--water-bg); --el-text: var(--water-text); }
 .saved-char { font-family: var(--font-glyph); font-size: var(--text-3); line-height: 1.15; }
-.saved-pinyin { font-size: 11px; font-weight: 600; line-height: 1.2; }
+.saved-pinyin { font-size: var(--text-1); font-weight: 600; line-height: 1.2; }
 .couple-names {
   display: flex;
   flex-wrap: wrap;
@@ -3278,7 +3278,7 @@ body:has(> .compare-container:not(.hidden)) { padding: var(--space-4); }
   align-items: center;
   gap: var(--space-2);
   margin-top: var(--space-2);
-  padding: 3px var(--space-3) 3px var(--space-2);
+  padding: var(--space-1) var(--space-3) var(--space-1) var(--space-2);
   border: 1px solid var(--line-1);
   border-radius: 999px;
   background: var(--surface-1);

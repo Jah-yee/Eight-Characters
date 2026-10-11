@@ -260,7 +260,7 @@ for (const profile of profiles) {
       assert.deepEqual(reached, ['Chart', 'Today', 'Characters', 'Ten Gods', 'Hidden stems', 'Standard', 'Evolution',
         'FI', 'EN',
         // In English the Day Master line opens the Day Master's page of readings.
-        'copy-link-btn', 'copy-text-btn', 'back-btn', 'new-chart-btn', 'compare-btn', 'save-partner-btn',
+        'copy-link-btn', 'copy-text-btn', 'back-btn', 'new-chart-btn', 'compare-btn',
         'Day Master · Ji — Yin Earth',
         'Chou month', 'Roots in 3 branches', 'Roles', 'relationships-topic',
         '壬申 Ren Shen', 'hour stem', '己丑 Ji Chou', '癸丑 Gui Chou', '丁卯 Ding Mao']);
