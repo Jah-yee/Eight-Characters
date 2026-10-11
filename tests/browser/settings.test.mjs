@@ -40,11 +40,15 @@ async function changeElsewhere(page, method, path, body) {
 // A birth saved elsewhere: its id.
 const saveElsewhere = async (page, birth, more = {}) => (await changeElsewhere(page, 'POST', '/api/account/charts', { ...birth, ...more })).saved;
 // The account starts from nothing kept: no saved chart, no place, the default schools.
+// The page ends on the start page: your chart, if one was marked before, may have opened
+// at the bare address.
 async function reset(page) {
   await page.goto(new URL('/', process.env.EC_BASE_URL).href);
   for (const chart of (await read(page)).charts) await changeElsewhere(page, 'DELETE', `/api/account/charts/${chart.id}`, {});
   await changeElsewhere(page, 'DELETE', '/api/account/place', {});
   await changeElsewhere(page, 'PATCH', '/api/account/schools', { favourable: null, season: null, transits: null });
+  await page.goto(new URL('/', process.env.EC_BASE_URL).href);
+  await page.locator('#input-view').waitFor({ state: 'visible' });
 }
 // Another address in the same page, as the page's own links go there.
 const goTo = (page, hash) => page.evaluate((hash) => {
@@ -536,6 +540,38 @@ for (const profile of profiles) {
       assert.deepEqual((await read(page)).couples.map((couple) => couple.charts), [[first, second]]);
     });
 
+    check('marked again after an unmark, while the first mark is on its way, the chart ends marked', async (page) => {
+      await reset(page);
+      const first = await saveElsewhere(page, { ...SCREEN, name: 'First' });
+      const second = await saveElsewhere(page, partnerNamed('Second'));
+      await changeElsewhere(page, 'PUT', '/api/account/my-chart', { chart: first });
+      await openSettings(page);
+      // The first mark is held on its way while Unmark and Mark are pressed.
+      let release;
+      const held = new Promise((resolve) => { release = resolve; });
+      let holding = true;
+      const asked = [];
+      await page.route('**/api/account/my-chart', async (route) => {
+        asked.push(route.request().method());
+        if (holding) {
+          holding = false;
+          await held;
+        }
+        await route.fallback();
+      });
+      await page.locator('#settings-mine-choice').selectOption(second);
+      await page.locator('[data-settings-action="mark"]').click();
+      await page.locator('#settings-mine-body [data-settings-action="unmark"]').click();
+      await page.locator('#settings-mine-choice').selectOption(second);
+      await page.locator('[data-settings-action="mark"]').click();
+      release();
+      await page.waitForFunction(() => document.querySelector('#settings-mine-body .saved-card .saved-name')?.textContent === 'Second');
+      await page.waitForLoadState('networkidle');
+      assert.deepEqual(asked, ['PUT', 'DELETE', 'PUT']);
+      assert.equal((await read(page)).my_chart, second);
+      assert.equal(await page.locator('#settings-status').isHidden(), true);
+    });
+
     check('Save, pressed again while the chart is being saved, saves it once', async (page) => {
       await reset(page);
       await openLink(page, chartLink(), { place: HELSINKI });
@@ -695,6 +731,13 @@ for (const profile of profiles) {
         await page.locator('#create-chart-btn').click();
         await drawn();
       };
+      // A link opened while a chart is on screen: that chart takes no clicks until the
+      // link's own is drawn, which its heading then names.
+      const opened = async (link, year) => {
+        await openLink(page, link, { place: HELSINKI });
+        await page.waitForFunction((year) => document.getElementById('chart-date').textContent.includes(year), year);
+        await drawn();
+      };
       // Summer clock 00:50 in Helsinki is true solar 23:29 the evening before: under the
       // whole Zi hour from 23:00, the day is the next one.
       await openLink(page, chartLink({ date: '2021-06-15', time: '00:50', zi: 'whole_zi_23' }), { place: HELSINKI });
@@ -715,7 +758,7 @@ for (const profile of profiles) {
       assert.equal(asked.at(-1).conventions?.zi_convention, 'whole_zi_23');
       assert.equal(await dayStem(), before);
       // 25 October 2020 in Helsinki: the clocks went back at 04:00, so 03:30 came twice.
-      await openLink(page, chartLink({ date: '2020-10-25', time: '03:30', fold: '1' }), { place: HELSINKI });
+      await opened(chartLink({ date: '2020-10-25', time: '03:30', fold: '1' }), '2020');
       await remade();
       assert.equal(asked.at(-1).location.fold, 1);
       assert.equal(await page.locator('#form-error').isHidden(), true);
@@ -727,7 +770,7 @@ for (const profile of profiles) {
       assert.equal(asked.at(-1).time, '12:00');
       assert.equal(asked.at(-1).location.fold, undefined);
       // New chart begins anew: the convention of the chart before is not carried over.
-      await openLink(page, chartLink({ date: '2021-06-15', time: '00:50', zi: 'whole_zi_23' }), { place: HELSINKI });
+      await opened(chartLink({ date: '2021-06-15', time: '00:50', zi: 'whole_zi_23' }), '2021');
       await page.locator('#new-chart-btn').click();
       await page.locator('#date').fill('2021-06-15');
       await page.locator('#time').fill('00:50');

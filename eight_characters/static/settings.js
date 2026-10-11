@@ -340,16 +340,18 @@
       say(t('library_full', { limit: drawn.chart_limit }), true);
       return true;
     };
-    // A change asked for again while it is on its way is not asked for twice: a second
-    // press on Pair, say, adds nothing to the first. Other changes wait their turn.
-    const underWay = new Set();
+    // A change asked for again, with nothing asked for since, while it is on its way is
+    // not asked for twice: a second press on Pair, say, adds nothing to the first. Asked
+    // for again after another change (Mark, Unmark, Mark), it is asked for in its turn.
+    let latest = null;
     const once = async (what, run) => {
-      if (underWay.has(what)) return;
-      underWay.add(what);
+      if (latest !== null && latest.what === what) return;
+      const mine = { what };
+      latest = mine;
       try {
         await run();
       } finally {
-        underWay.delete(what);
+        if (latest === mine) latest = null;
       }
     };
     // Removing a chart says first what else it ends: being your chart, its couple, or

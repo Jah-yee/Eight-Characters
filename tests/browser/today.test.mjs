@@ -657,6 +657,61 @@ describe(`${engineName} / today and the session`, { concurrency: false }, () => 
     assert.equal(answers.at(-1).request.charts.partner, undefined);
   }, { signedIn: false }));
 
+  it('another account taken while the day is hidden: opened again, Today shows nothing of the one before', { timeout: 120000 }, () => withPage(profiles[0], async (page) => {
+    await page.clock.setFixedTime(NOW);
+    const first = await ownAccount(page, 'en', 'today-hidden-a');
+    const second = await ownAccount(page, 'en', 'today-hidden-b');
+    await asAccount(playwright, first, async (request) => {
+      const now = await (await request.get('/api/account/settings')).json();
+      const mine = await request.post('/api/account/charts', { data: { ...SELF, key: first.key, updated_at: now.updated_at } });
+      assert.equal(mine.status(), 201, await mine.text());
+      const { saved, updated_at: read } = await mine.json();
+      const kept = await request.post('/api/account/charts', {
+        data: { ...PARTNER, name: 'First partner', couple_with: saved, key: first.key, updated_at: read },
+      });
+      assert.equal(kept.status(), 201, await kept.text());
+    });
+    await signInPage(page, first);
+    const { answers } = await recordToday(page);
+    await page.goto(new URL(todayLink(), process.env.EC_BASE_URL).href);
+    await shown(page);
+    assert.equal(await page.locator('.today-who-name').textContent(), 'First partner');
+    // To the chart, where another tab's sign-in to the second account is taken by the
+    // account's command.
+    await page.locator('#today-page-switch [data-page="chart"]').click();
+    await page.locator('#chart-view').waitFor({ state: 'visible' });
+    await page.waitForFunction(() => !document.getElementById('chart-view').hasAttribute('aria-busy'));
+    await page.context().addCookies(second.cookies);
+    await page.keyboard.press('ControlOrMeta+k');
+    await page.locator('#palette-input').fill('account');
+    await page.keyboard.press('Enter');
+    await dialogOpens(page);
+    await page.locator('#account-who').filter({ hasText: second.email }).waitFor();
+    await page.keyboard.press('Escape');
+    // Today again, its settings held on their way: nothing of the first account is drawn
+    // meanwhile.
+    let release;
+    const held = new Promise((resolve) => { release = resolve; });
+    let holding = true;
+    await page.route('**/api/account/settings', async (route) => {
+      if (holding && route.request().method() === 'GET') {
+        holding = false;
+        await held;
+      }
+      await route.fallback();
+    });
+    await page.locator('#page-switch [data-page="today"]').click();
+    await page.locator('#today-view').waitFor({ state: 'visible' });
+    assert.equal(await page.locator('.today-who-name').textContent(), '');
+    assert.equal(await page.locator('#today-who').isHidden(), true);
+    assert.equal(await page.locator('#today-body').isHidden(), true);
+    assert.doesNotMatch(await page.locator('#today-view').textContent(), /First partner/);
+    release();
+    await shown(page);
+    assert.equal(await page.locator('#today-who').isHidden(), true);
+    assert.equal(answers.at(-1).request.charts.partner, undefined);
+  }, { signedIn: false }));
+
   it('signed in on a day’s link, the day is in the account’s language, and so is its address', { timeout: 120000 }, () => withPage(profiles[0], async (page) => {
     await page.clock.setFixedTime(NOW);
     const own = await ownAccount(page, 'fi', 'today-language');

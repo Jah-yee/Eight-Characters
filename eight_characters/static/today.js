@@ -708,12 +708,13 @@
         clear();
       },
       // Another account taken in this browser: the day drawn with the settings of the one
-      // before (its place, its schools, its couple) goes, and the day is asked for again
-      // with this one's.
+      // before (its place, its schools, its couple) goes, shown or hidden, so that Today
+      // opened again draws nothing of it; shown, the day is asked for again with this
+      // account's.
       renew: () => {
-        if (state === null) return;
+        const next = state;
         keepingFocus(clear);
-        show(state);
+        if (next !== null) show(next);
       },
       // Settings changed: the day is asked for again with them.
       refresh: () => {
