@@ -54,6 +54,8 @@
     // made from them, so settings read meanwhile by Today or a chart's bar (another
     // partner saved elsewhere, say) replace them, and the change is not made.
     let drawnBasis = -1;
+    // The settings last drawn here, which this page's controls show.
+    let drawn = null;
     // Changes still waiting: the page is drawn once the last of them has its answer.
     let waiting = 0;
 
@@ -264,7 +266,8 @@
       const action = event.target.closest('[data-settings-action]')?.dataset.settingsAction;
       if (!action) return;
       if (action === 'new') onNewChart();
-      else if (action === 'open') onOpenChart(chartParams(settings.partner));
+      // The chart on screen, as drawn: settings read since for elsewhere may name another.
+      else if (action === 'open') onOpenChart(chartParams(drawn.partner));
       else await change('DELETE', '/api/account/partner', {}, t('settings_partner_removed'));
     });
 
@@ -451,6 +454,7 @@
       drawPartner();
       drawPlace();
       if (catalog !== null) drawSchools();
+      drawn = settings;
       drawnBasis = basis;
       if (focused === null || focusable(focused)) return;
       const found = counterpart === null ? null : view.querySelector(counterpart);
@@ -491,20 +495,23 @@
 
     // Keeps a birth as the partner's chart, as a chart's bar asks (app.js): null once
     // kept, or why not.
-    // The dialog has just read the settings (app.js): the change is made from them.
-    const savePartner = async (birth) => write('PUT', '/api/account/partner', birth, basis);
+    // Save as partner (app.js) makes its change from the settings its dialog read, by the
+    // basis they had then (basis()).
+    const savePartner = async (birth, from) => write('PUT', '/api/account/partner', birth, from);
 
     return {
       show,
       hide,
       load,
       current: () => settings,
+      basis: () => basis,
       savePartner,
       partnerName,
       // A sign-out forgets what was read for the account and leaves nothing of it on the
       // page, and the changes still waiting are not made.
       forget: () => {
         settings = null;
+        drawn = null;
         generation += 1;
         basis += 1;
         replaced = t('account_session_ended');

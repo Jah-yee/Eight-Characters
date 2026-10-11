@@ -1736,8 +1736,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const partnerCancel = document.getElementById('partner-cancel');
   if (!savePartnerBtn || !partnerDialog || !partnerForm || !partnerChart || !partnerReplaces || !partnerNameInput
     || !partnerNameStatus || !partnerCancel) throw new Error('Saving a partner is incomplete.');
-  // The chart the dialog saves, taken when it opened.
+  // The chart the dialog saves, taken when it opened, and the basis of the settings it
+  // read then: a save is made from them.
   let partnerToSave = null;
+  let partnerBasis = null;
   // Which saved partner's chart a save replaces, as the settings last read say.
   const sayReplaces = (current) => {
     const partner = current?.partner ?? null;
@@ -1760,8 +1762,10 @@ document.addEventListener('DOMContentLoaded', () => {
       showToast(err.message, true);
       return;
     }
-    if (shown !== chosen) return;
+    // Only for the chart still on screen, and once.
+    if (shown !== chosen || chartView.classList.contains('hidden') || partnerDialog.open) return;
     partnerToSave = chosen;
+    partnerBasis = settingsPage.basis();
     partnerChart.textContent = chosen.heading;
     sayReplaces(current);
     partnerNameInput.value = '';
@@ -1772,6 +1776,7 @@ document.addEventListener('DOMContentLoaded', () => {
   partnerCancel.addEventListener('click', () => partnerDialog.close());
   partnerDialog.addEventListener('close', () => {
     partnerToSave = null;
+    partnerBasis = null;
   });
   partnerForm.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -1801,7 +1806,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     let problem;
     try {
-      problem = await settingsPage.savePartner(birth);
+      problem = await settingsPage.savePartner(birth, partnerBasis);
     } catch (err) {
       console.error(err);
       problem = err.message;
@@ -1810,8 +1815,10 @@ document.addEventListener('DOMContentLoaded', () => {
       partnerDialog.close();
       showToast(requiredTranslation('save_partner_saved'), false);
     } else {
-      // Refused, the settings may have been read again: what a save replaces is said anew.
+      // Refused, the settings may have been read again: what a save replaces is said anew,
+      // and the next save is made from them.
       partnerNameStatus.textContent = problem;
+      partnerBasis = settingsPage.basis();
       sayReplaces(settingsPage.current());
     }
   });

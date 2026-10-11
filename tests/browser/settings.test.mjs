@@ -41,6 +41,12 @@ async function reset(page) {
   await changeElsewhere(page, 'DELETE', '/api/account/place', {});
   await changeElsewhere(page, 'PATCH', '/api/account/schools', { favourable: null, season: null, transits: null });
 }
+// Another address in the same page, as the page's own links go there.
+const goTo = (page, hash) => page.evaluate((hash) => {
+  history.pushState(null, '', hash);
+  dispatchEvent(new PopStateEvent('popstate'));
+}, hash);
+const partnerNamed = (name) => ({ name, date: '1975-08-14', time: '07:45', place: PLACE, gender: 'female', zi: 'split_midnight' });
 async function openSettings(page) {
   await page.goto(new URL('/#settings', process.env.EC_BASE_URL).href);
   await page.locator('#settings-view').waitFor({ state: 'visible' });
@@ -169,6 +175,57 @@ for (const profile of profiles) {
       await page.unroute('**/api/account/settings', refuse);
       assert.equal((await read(page)).partner.name, 'Replacement', 'the partner not shown was not removed');
       assert.equal(await page.locator('.settings-partner-name').textContent(), 'Replacement');
+    });
+
+    check('Open, on Settings drawn before a removal read elsewhere, opens the chart they show', async (page) => {
+      await reset(page);
+      await changeElsewhere(page, 'PUT', '/api/account/partner', partnerNamed('First'));
+      await openLink(page, chartLink(), { place: HELSINKI });
+      await goTo(page, '#settings');
+      await page.locator('#settings-view').waitFor({ state: 'visible' });
+      await page.waitForFunction(() => !document.getElementById('settings-view').hasAttribute('aria-busy'));
+      await page.goBack();
+      await page.locator('#chart-view').waitFor({ state: 'visible' });
+      // Removed elsewhere, and read so by the chart's Save as partner.
+      await changeElsewhere(page, 'DELETE', '/api/account/partner', {});
+      await page.locator('#save-partner-btn').click();
+      await page.locator('#partner-dialog').waitFor({ state: 'visible' });
+      assert.equal(await page.locator('#partner-dialog-replaces').isHidden(), true);
+      await page.locator('#partner-cancel').click();
+      const refuse = (route) => route.fulfill({ status: 500, json: { detail: 'Stopped by the test.' } });
+      await page.route('**/api/account/settings', refuse);
+      await goTo(page, '#settings');
+      await page.locator('#settings-status').waitFor({ state: 'visible' });
+      await page.locator('[data-settings-action="open"]').click();
+      await page.locator('#chart-view').waitFor({ state: 'visible' });
+      assert.equal(await page.evaluate(() => new URLSearchParams(location.hash.split('?')[1]).get('date')), '1975-08-14');
+      await page.unroute('**/api/account/settings', refuse);
+    });
+
+    check('Save as partner is made from the settings its dialog read, and names a partner read since', async (page) => {
+      await reset(page);
+      await changeElsewhere(page, 'PUT', '/api/account/partner', partnerNamed('First'));
+      await openLink(page, chartLink(), { place: HELSINKI });
+      await page.locator('#save-partner-btn').click();
+      await page.locator('#partner-dialog').waitFor({ state: 'visible' });
+      assert.match(await page.locator('#partner-dialog-replaces').textContent(), /First/);
+      // Another partner saved elsewhere, and the settings read again behind the dialog.
+      await changeElsewhere(page, 'PUT', '/api/account/partner', partnerNamed('Replacement'));
+      const readAgain = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/account/settings'
+        && response.request().method() === 'GET');
+      await page.evaluate(() => document.getElementById('save-partner-btn').click());
+      await readAgain;
+      await page.waitForTimeout(200);
+      await page.locator('#partner-save').click();
+      await page.waitForFunction(() => document.getElementById('partner-name-status').textContent !== '');
+      assert.match(await page.locator('#partner-name-status').textContent(), /changed elsewhere/);
+      assert.match(await page.locator('#partner-dialog-replaces').textContent(), /Replacement/);
+      assert.equal((await read(page)).partner.name, 'Replacement', 'nothing was replaced unseen');
+      await page.locator('#partner-save').click();
+      await page.locator('#partner-dialog').waitFor({ state: 'hidden' });
+      const kept = (await read(page)).partner;
+      assert.equal(kept.date, BIRTH.date);
+      assert.equal(kept.name, null);
     });
 
     check('a place picked while the one before is saved stays picked', async (page) => {
