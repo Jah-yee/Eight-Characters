@@ -12,6 +12,14 @@
   const TOPIC_PATH = /^(marriage|work|health|day|pillar\/(day|month|year|luck))$/;
   const DAY_PATH = /^\d{4}-\d{2}-\d{2}$/;
   const ELEMENTS = ['wood', 'fire', 'earth', 'metal', 'water'];
+  const NATAL = ['year', 'month', 'day', 'hour'];
+  // The five gods, from the useful to the unfavourable (docs/Today.md).
+  const GODS = ['useful', 'favourable', 'idle', 'enemy', 'unfavourable'];
+  // The pull's scale, the same for every layer and day: the rules' largest pull is 3.28
+  // (test_schools.py holds every pull inside it).
+  const SCALE = 3.5;
+  // A drag moves the days once it has gone this far across.
+  const DRAG = 40;
 
   // ── The address: the chart's link parts, then the day, whose day, and the topic ──
   // The chart's own link, in the language the day is shown in.
@@ -50,8 +58,13 @@
     const body = need('#today-body');
     const pullLine = need('#today-pull-line');
     const topics = need('#today-topics');
+    const days = need('#today-days');
+    const daysTrack = need('.today-days-track');
     const run = need('#today-run');
+    const scale = need('#today-scale');
+    const pillarsNote = need('#today-pillars-label');
     const pillars = need('#today-pillars');
+    const couple = need('#today-couple');
     const inChart = need('#today-in-chart');
     const hours = need('#today-hours');
     const panel = need('#today-panel');
@@ -65,6 +78,9 @@
     let shownSettings = null;
     let answer = null;
     let asked = 0;
+    // The run the days and their steps go by: the answer drawn last's. None while no day
+    // is drawn.
+    let daysRun = null;
 
     // ── Words and numbers in the page's language ──
     const lang = () => state?.lang ?? 'fi';
@@ -87,6 +103,9 @@
     const shortDate = (day) => new Intl.DateTimeFormat(locale(), {
       weekday: 'short', day: 'numeric', month: 'numeric', timeZone: 'UTC',
     }).format(calendar(day));
+    const weekdayOf = (day) => new Intl.DateTimeFormat(locale(), { weekday: 'long', timeZone: 'UTC' }).format(calendar(day));
+    const dayMonthOf = (day) => new Intl.DateTimeFormat(locale(), { day: 'numeric', month: 'long', timeZone: 'UTC' }).format(calendar(day));
+    const dayOfMonth = (day) => new Intl.DateTimeFormat(locale(), { day: 'numeric', timeZone: 'UTC' }).format(calendar(day));
     // A clock time the API gives with its offset, read as the place's clock shows it.
     const clock = (text) => {
       const match = /T(\d{2}):(\d{2})/.exec(text);
@@ -100,6 +119,8 @@
     const placeName = (pillar) => (FIFTH[pillar] ? t('today_member_' + FIFTH[pillar]) : t('pillar_' + pillar));
     const relationshipName = (kind) => t('relationship_' + kind);
     const tieName = (tie) => (tie === 'repeat' ? t('today_tie_repeat') : relationshipName(tie));
+    // "Useful: Wood": one of the five gods and its element.
+    const godLine = (god, element) => t('today_god_element', { god: t('today_god_' + god), element: t('element_' + element) });
 
     // ── The date on the clock at where you are, and calendar steps ──
     const todayAt = (timezone) => new Intl.DateTimeFormat('en-CA', {
@@ -110,6 +131,14 @@
       const next = calendar(day);
       next.setUTCDate(next.getUTCDate() + by);
       return next.toISOString().slice(0, 10);
+    };
+    // A step from the day shown, through the run drawn: its next or previous day, so a
+    // date the place's clocks skipped is passed over. Beyond the run, or with none drawn
+    // (a day the API refused), a step is a calendar day.
+    const stepped = (by) => {
+      const at = daysRun === null ? -1 : daysRun.findIndex((day) => day.date === state.day);
+      const to = daysRun?.[at + by];
+      return at >= 0 && to ? to.date : stepDay(state.day, by);
     };
 
     // Moves to another state: the address follows, replacing the entry for a step and
@@ -208,7 +237,21 @@
         && value.layers.day && value.layers.month && value.layers.year
         && Array.isArray(value.run) && value.run.length > 0 && Array.isArray(value.hours) && value.hours.length === 12
         && value.favourable && value.work && value.health && Array.isArray(value.health.elements);
-      if (!ok) throw new Error(t('today_answer_error'));
+      // Every pillar is drawn as the chart's cards and every pull on the scale: an answer
+      // without a pillar's lines, or with a pull past the scale's ends, is refused, never
+      // drawn clipped.
+      const lines = (found, count) => Array.isArray(found) && found.length === count && found.every((line) => line === 'L' || line === 'B');
+      const drawable = (pillar) => Boolean(pillar?.stem && pillar.branch && lines(pillar.stem.lines, 3) && lines(pillar.branch.lines, 6)
+        && ELEMENTS.includes(pillar.stem.element) && ELEMENTS.includes(pillar.branch.element));
+      const onScale = (found) => Number.isFinite(found) && Math.abs(found) <= SCALE;
+      const whole = ok && value.natal && NATAL.every((name) => drawable(value.natal[name]))
+        && LAYERS.every((layer) => value.layers[layer] === null
+          || (drawable(value.layers[layer].pillar) && onScale(value.layers[layer].pull.score)))
+        && value.run.every((day) => drawable(day.pillar) && onScale(day.score))
+        && GODS.every((god) => ELEMENTS.includes(value.favourable.gods?.[god]))
+        && value.hours.every((hour) => ELEMENTS.includes(hour.element))
+        && (value.marriage === null || onScale(value.marriage?.partner?.pull?.score));
+      if (!whole) throw new Error(t('today_answer_error'));
       return value;
     };
     const topicButton = (path, label) => `<button type="button" class="topic-button" data-today-topic="${esc(path)}"
@@ -223,24 +266,136 @@
         topicButton('health', t('today_topic_health')),
       ].join('');
     };
-    const drawRun = () => {
-      run.innerHTML = `
-        <span id="today-run-label" class="luck-ribbon-label">${esc(t('today_run_label'))}</span>
-        <div class="today-run-track">${answer.run.map((day) => `
-          <button type="button" class="today-run-day band-${esc(day.band)}${day.date === state.day ? ' is-selected' : ''}" data-today-day="${esc(day.date)}"
-            ${day.date === state.day ? 'aria-current="date"' : ''} aria-label="${esc(t('today_run_day', { day: shortDate(day.date), pillar: `${day.pillar.stem.pinyin} ${day.pillar.branch.pinyin}`, pull: pull(day) }))}">
-            <span class="today-run-date" aria-hidden="true">${esc(shortDate(day.date))}</span>
-            <span class="today-run-chars" lang="zh-Hant" aria-hidden="true">${esc(day.pillar.stem.chinese + day.pillar.branch.chinese)}</span>
-            <span class="today-run-pinyin" aria-hidden="true">${esc(`${day.pillar.stem.pinyin} ${day.pillar.branch.pinyin}`)}</span>
-            <span class="today-run-mark" aria-hidden="true"></span>
-            <span class="today-run-score" aria-hidden="true">${esc(score(day.score))}</span>
-            <span class="today-run-band" aria-hidden="true">${esc(bandName(day.band))}</span>
-          </button>`).join('')}</div>`;
-      run.querySelector('.today-run-day.is-selected')?.scrollIntoView({ block: 'nearest', inline: 'center' });
+    // ── The chart's cards, as Standard mode draws a pillar: a stem card over its branch
+    // card, each in its own element's colours, its character with its pinyin. Large, a
+    // card also draws its lines (the stem's trigram, the branch's hexagram, as the answer
+    // gives them) and its name: the stem's polarity and element, the branch's animal. A
+    // relationship's member is outlined on its card. ──
+    const gua = (lines) => `<span class="today-gua" aria-hidden="true">${lines.map((line) => `<i class="today-line is-${line === 'L' ? 'whole' : 'broken'}"></i>`).join('')}</span>`;
+    const card = (part, glyph, large, member) => `<span class="today-card is-${part} ${esc(glyph.element)}${member ? ' is-member' : ''}">
+        <span class="today-card-glyph" lang="zh-Hant">${esc(glyph.chinese)}</span>
+        <span class="today-card-pinyin">${esc(glyph.pinyin)}</span>
+        ${large ? `${gua(glyph.lines)}<span class="today-card-name">${esc(part === 'stem'
+          ? `${glyph.polarity} ${t('element_' + glyph.element)}`
+          : t('animal_' + glyph.sign.toLowerCase()))}</span>` : ''}
+      </span>`;
+    const cards = (pillar, size, member = null) => `<span class="today-cards is-${size}">${card('stem', pillar.stem, size === 'large', member === pillar.stem.chinese)}${card('branch', pillar.branch, size === 'large', member === pillar.branch.chinese)}</span>`;
+
+    // ── The pull's scale: one domain, -3.5 to +3.5, for every layer and day; ticks at the
+    // bands' edges; the score's marker. Its halves take the useful and the unfavourable
+    // element's colours; the words beside it say what the colours do. ──
+    const TICKS = [-1.5, -0.5, 0, 0.5, 1.5];
+    const scaleAt = (value) => `${(50 + (value / SCALE) * 50).toFixed(2)}%`;
+    const track = (markers, gods = null, size = '') => `<span class="today-scale-track${gods === null ? ' is-neutral' : ''}${size ? ` is-${size}` : ''}"${gods === null ? ''
+      : ` style="--for: var(--${gods.useful}-bg); --against: var(--${gods.unfavourable}-bg)"`}>
+        ${TICKS.map((tick) => `<i class="today-scale-tick${tick === 0 ? ' is-zero' : ''}" style="--at: ${scaleAt(tick)}"></i>`).join('')}
+        ${markers.map(([value, kind]) => `<i class="today-scale-marker is-${kind}" style="--at: ${scaleAt(value)}"></i>`).join('')}
+      </span>`;
+    const drawScale = () => {
+      const gods = answer.favourable.gods;
+      scale.innerHTML = `<div class="today-scale-figure" aria-hidden="true">
+          <span class="today-scale-end is-against">− ${esc(godLine('unfavourable', gods.unfavourable))}</span>
+          ${track([[answer.layers.day.pull.score, 'day']], gods)}
+          <span class="today-scale-end is-for">+ ${esc(godLine('useful', gods.useful))}</span>
+        </div>
+        <p class="today-five-gods">${GODS.map((god) => `<span class="today-god"><i class="today-god-chip ${esc(gods[god])}" aria-hidden="true"></i>${esc(godLine(god, gods[god]))}</span>`).join('')}</p>`;
     };
+
+    // ── The days: the chosen one in the middle as the chart's cards, its neighbours in the
+    // run on either side, smaller. A day's node stays while it is near the middle, so a
+    // step moves the days rather than drawing them anew; one coming into view enters
+    // from a step beyond. ──
+    const dayNodes = new Map();
+    const dayMarkup = (day) => `${cards(day.pillar, 'large')}
+      <span class="today-day-when"><span class="today-day-weekday">${esc(weekdayOf(day.date))}</span>
+        <span class="today-day-date">${esc(dayMonthOf(day.date))}</span></span>
+      <span class="today-day-pull band-${esc(day.band)}"><span class="today-band-mark" aria-hidden="true"></span>${esc(pull(day))}</span>`;
+    const placeOf = (offset) => (offset < -2 ? 'before' : offset > 2 ? 'after' : String(offset));
+    const clearDays = () => {
+      dayNodes.forEach((node) => node.remove());
+      dayNodes.clear();
+    };
+    // Lays the days out around `centre`, from the run drawn; `moved` is the step's way
+    // (1 later, -1 earlier, 0 none). False when the run does not hold the day.
+    const layDays = (centre, moved) => {
+      const at = daysRun === null ? -1 : daysRun.findIndex((day) => day.date === centre);
+      if (at < 0) return false;
+      const near = new Map();
+      for (let offset = -3; offset <= 3; offset += 1) {
+        const day = daysRun[at + offset];
+        if (day) near.set(day.date, { day, offset });
+      }
+      dayNodes.forEach((node, date) => {
+        if (near.has(date)) return;
+        node.remove();
+        dayNodes.delete(date);
+      });
+      let entering = false;
+      near.forEach(({ day, offset }, date) => {
+        let node = dayNodes.get(date);
+        if (!node) {
+          node = document.createElement('div');
+          node.className = 'today-day';
+          node.dataset.todayPick = date;
+          node.dataset.place = placeOf(offset + moved);
+          daysTrack.append(node);
+          dayNodes.set(date, node);
+          entering = true;
+        }
+        node.innerHTML = dayMarkup(day);
+        node.classList.toggle('is-centre', offset === 0);
+        node.setAttribute('aria-hidden', String(offset !== 0));
+      });
+      // Laid out where they enter from, then moved: the days slide in.
+      if (entering && moved !== 0) void daysTrack.offsetWidth;
+      near.forEach(({ offset }, date) => {
+        dayNodes.get(date).dataset.place = placeOf(offset);
+      });
+      return true;
+    };
+    // The run marks the day chosen at once too.
+    const markRun = (day) => {
+      run.querySelectorAll('[data-today-day]').forEach((button) => {
+        const chosen = button.dataset.todayDay === day;
+        button.classList.toggle('is-selected', chosen);
+        if (chosen) button.setAttribute('aria-current', 'date');
+        else button.removeAttribute('aria-current');
+      });
+    };
+    const drawDays = () => {
+      daysRun = answer.run;
+      layDays(state.day, 0);
+    };
+
+    // ── The run: the 22 days as a strip, each a bar around a zero line, up for a positive
+    // pull and down for a negative one, its length on the pull's scale. Each day's text
+    // (date, pillar, score, band) is in its button, for the reader and for print. ──
+    const drawRun = () => {
+      const gods = answer.favourable.gods;
+      const today = todayAt(answer.place.timezone);
+      run.innerHTML = `
+        <span id="today-run-label" class="today-run-label">${esc(t('today_run_label'))}</span>
+        <div class="today-run-track" style="--for: var(--${gods.useful}-bg); --against: var(--${gods.unfavourable}-bg)">${answer.run.map((day) => `
+          <button type="button" class="today-run-day band-${esc(day.band)}${day.date === state.day ? ' is-selected' : ''}${day.date === today ? ' is-today' : ''}" data-today-day="${esc(day.date)}"
+            ${day.date === state.day ? 'aria-current="date"' : ''} aria-label="${esc(t('today_run_day', { day: shortDate(day.date), pillar: `${day.pillar.stem.pinyin} ${day.pillar.branch.pinyin}`, pull: pull(day) }))}">
+            <span class="today-run-bar ${day.score < 0 ? 'is-against' : 'is-for'}" style="--size: ${Math.min(Math.abs(day.score) / SCALE, 1).toFixed(3)}" aria-hidden="true"></span>
+            <span class="today-run-number" aria-hidden="true">${esc(dayOfMonth(day.date))}</span>
+            <span class="today-run-text" aria-hidden="true">
+              <span class="today-run-date">${esc(shortDate(day.date))}</span>
+              <span class="today-run-chars" lang="zh-Hant">${esc(day.pillar.stem.chinese + day.pillar.branch.chinese)}</span>
+              <span class="today-run-pinyin">${esc(`${day.pillar.stem.pinyin} ${day.pillar.branch.pinyin}`)}</span>
+              <span class="today-run-mark"></span>
+              <span class="today-run-score">${esc(score(day.score))}</span>
+              <span class="today-run-band">${esc(bandName(day.band))}</span>
+            </span>
+          </button>`).join('')}</div>`;
+    };
+
+    // ── The four pillars, at noon where you are, each as the chart's cards ──
     const tenGodOf = (layer) => layer.ten_gods.find((god) => god.role === 'stem');
     const luckYears = (span) => `${span.start_utc.slice(0, 4)}–${span.end_utc.slice(0, 4)}`;
     const drawPillars = () => {
+      pillarsNote.textContent = t('today_pillars_at_noon', { place: answer.place.city });
       pillars.innerHTML = LAYERS.map((name) => {
         const layer = answer.layers[name];
         if (layer === null) {
@@ -249,24 +404,64 @@
             <p class="today-pillar-none">${esc(t('today_no_luck'))}</p>
           </article>`;
         }
-        const { stem, branch } = layer.pillar;
         const god = tenGodOf(layer);
+        // By phase, a luck pillar's stem rests in its branch phase, as the chart draws it.
+        const resting = name === 'luck' && answer.schools.transits === 'phases' && layer.luck?.phase === 'branch';
         const luck = layer.luck === null ? ''
           : `<p class="today-pillar-luck">${esc(t('today_luck_span', { years: luckYears(layer.luck), phase: t('today_phase_' + layer.luck.phase) }))}</p>`;
-        return `<article class="today-pillar ${esc(stem.element)}" data-layer="${name}">
+        return `<article class="today-pillar" data-layer="${name}">
           <h3 class="today-pillar-name">${esc(layerName(name))}</h3>
-          <button type="button" class="today-pillar-open" data-today-topic="pillar/${name}" aria-expanded="${state.topic === `pillar/${name}`}" aria-controls="today-panel">
-            ${characters(stem, branch)}
+          <button type="button" class="today-pillar-open${resting ? ' is-stem-resting' : ''}" data-today-topic="pillar/${name}" aria-expanded="${state.topic === `pillar/${name}`}" aria-controls="today-panel">
+            ${cards(layer.pillar, 'small')}
           </button>
           <p class="today-pillar-god">${esc(god ? t('ten_god_' + god.ten_god) : '')}</p>
           <p class="today-pillar-pull band-${esc(layer.pull.band)}"><span class="today-band-mark" aria-hidden="true"></span>${esc(pull(layer.pull))}</p>
+          <span class="today-pillar-scale" aria-hidden="true">${track([[layer.pull.score, 'layer']], answer.favourable.gods, 'mini')}</span>
           ${luck}
         </article>`;
       }).join('');
     };
-    const relationshipItem = (r) => `<li class="today-relationship" data-relationship="${esc(r.id)}">
+
+    // ── The couple: both sides' pulls on the same day, on one neutral scale (each chart's
+    // own elements differ), and whether the day pulls them apart, as the API says ──
+    const drawCouple = () => {
+      const m = answer.marriage;
+      couple.classList.toggle('hidden', m === null);
+      if (m === null) {
+        couple.replaceChildren();
+        return;
+      }
+      const partner = shownSettings === null ? null : partnerOf(shownSettings);
+      if (partner === null) throw new Error(t('today_answer_error'));
+      const sides = state.who === 'partner'
+        ? [[partnerName(partner), answer.layers.day.pull], [t('today_self'), m.partner.pull]]
+        : [[t('today_self'), answer.layers.day.pull], [partnerName(partner), m.partner.pull]];
+      couple.innerHTML = `<h3 id="today-couple-title" class="today-section-title">${esc(t('today_couple'))}</h3>
+        <div class="today-couple-day">${cards(answer.layers.day.pillar, 'small')}</div>
+        <ul class="today-couple-sides">${sides.map(([name, value], index) => `<li class="today-couple-side is-${index === 0 ? 'first' : 'second'}">
+            <span class="today-couple-key" aria-hidden="true"></span>
+            <span class="today-couple-name">${esc(name)}</span>
+            <span class="today-pillar-pull band-${esc(value.band)}"><span class="today-band-mark" aria-hidden="true"></span>${esc(pull(value))}</span>
+          </li>`).join('')}</ul>
+        <span class="today-couple-scale" aria-hidden="true">${track([[sides[0][1].score, 'first'], [sides[1][1].score, 'second']])}</span>
+        <p class="today-couple-apart">${esc(t(m.pull_apart ? 'today_pull_apart' : 'today_pull_not_apart'))}</p>`;
+    };
+
+    // ── In your chart: each relationship, and on the main page the pillars it joins: the
+    // day's own for its member of this day, month, year or luck pillar, the chart's own
+    // (answer.natal) for its members in the chart, each member outlined on its card ──
+    const memberPillar = (member) => {
+      const pillar = FIFTH[member.pillar] ? answer.layers[FIFTH[member.pillar]]?.pillar : answer.natal[member.pillar];
+      if (!pillar) throw new Error(t('today_answer_error'));
+      return pillar;
+    };
+    const relationshipFigure = (r) => `<span class="today-relationship-figure" aria-hidden="true">${r.members.map((member) => `<span class="today-member-pillar">
+        <span class="today-member-place">${esc(placeName(member.pillar))}</span>${cards(memberPillar(member), 'tiny', member.char)}
+      </span>`).join('<span class="today-relationship-link"></span>')}</span>`;
+    const relationshipItem = (r, figure = false) => `<li class="today-relationship" data-relationship="${esc(r.id)}">
         <span class="today-relationship-kind">${esc(relationshipName(r.kind))}</span>
         <span class="today-relationship-members">${r.members.map((m) => `<span class="today-member"><span lang="zh-Hant">${esc(m.char)}</span> ${esc(m.pinyin)} · ${esc(placeName(m.pillar))}</span>`).join('')}</span>
+        ${figure ? relationshipFigure(r) : ''}
         ${r.line ? `<span class="today-relationship-line">${esc(r.line)}</span>` : ''}
       </li>`;
     const drawInChart = () => {
@@ -275,26 +470,72 @@
       const title = state.who === 'partner' && partner !== null
         ? t('today_in_chart_of', { name: partnerName(partner) }) : t('today_in_chart');
       inChart.innerHTML = `<h3 id="today-in-chart-title" class="today-section-title">${esc(title)}</h3>
-        ${all.length ? `<ul class="today-relationships">${all.map(relationshipItem).join('')}</ul>`
+        ${all.length ? `<ul class="today-relationships">${all.map((r) => relationshipItem(r, true)).join('')}</ul>`
           : `<p class="settings-note">${esc(t('today_in_chart_none'))}</p>`}`;
+    };
+
+    // ── The hours: a dial of the twelve double hours, by branch (Zi at the top, clockwise),
+    // in their elements' colours, each with its call's mark; and the table, which says it
+    // all (the dial is a picture of it). The hour the clock is in now, on today, is
+    // outlined. ──
+    const DIAL = 240;
+    const dial = () => {
+      const centre = DIAL / 2;
+      const outer = 116;
+      const inner = 58;
+      const point = (degrees, radius) => {
+        const angle = (degrees * Math.PI) / 180;
+        return [centre + radius * Math.cos(angle), centre + radius * Math.sin(angle)].map((v) => v.toFixed(2)).join(' ');
+      };
+      const now = answer.date === todayAt(answer.place.timezone) ? Date.now() : null;
+      const isNow = (hour) => now !== null && hour.spans.some((span) => Date.parse(span.start) <= now && now < Date.parse(span.end));
+      const mark = (call, x, y) => {
+        if (call === 'protect') return `<circle class="today-dial-call" cx="${x}" cy="${y}" r="4"/>`;
+        if (call === 'mixed') return `<rect class="today-dial-call" x="${(x - 5).toFixed(2)}" y="${(y - 1).toFixed(2)}" width="10" height="2"/>`;
+        if (call === 'avoid') return `<rect class="today-dial-call" x="${(x - 4).toFixed(2)}" y="${(y - 4).toFixed(2)}" width="8" height="8"/>`;
+        return '';
+      };
+      const wedges = answer.hours.map((hour, index) => {
+        const middle = index * 30 - 90;
+        const [from, to] = [middle - 14.4, middle + 14.4];
+        const at = (radius) => point(middle, radius).split(' ').map(Number);
+        // The branch over its pinyin, upright, in the wedge's outer part; the call's mark
+        // nearer the middle.
+        const [lx, ly] = at(92);
+        const [cx, cy] = at(67);
+        return `<g class="today-dial-hour ${esc(hour.element)}${isNow(hour) ? ' is-now' : ''}">
+          <path d="M ${point(from, outer)} A ${outer} ${outer} 0 0 1 ${point(to, outer)} L ${point(to, inner)} A ${inner} ${inner} 0 0 0 ${point(from, inner)} Z"/>
+          <text class="today-dial-glyph" x="${lx.toFixed(2)}" y="${(ly - 7).toFixed(2)}" lang="zh-Hant">${esc(hour.branch)}</text>
+          <text class="today-dial-pinyin" x="${lx.toFixed(2)}" y="${(ly + 10).toFixed(2)}">${esc(hour.pinyin)}</text>
+          ${mark(hour.call, Number(cx.toFixed(2)), Number(cy.toFixed(2)))}
+        </g>`;
+      }).join('');
+      const current = answer.hours.find(isNow);
+      return `<svg class="today-dial" viewBox="0 0 ${DIAL} ${DIAL}" aria-hidden="true">${wedges}
+        ${current ? `<g class="today-dial-now"><text class="today-dial-now-label" x="${centre}" y="${centre - 6}">${esc(t('today_hour_now'))}</text>
+          <text class="today-dial-now-hour" x="${centre}" y="${centre + 14}"><tspan lang="zh-Hant">${esc(current.branch)}</tspan> ${esc(current.pinyin)}</text></g>` : ''}
+      </svg>`;
     };
     const drawHours = () => {
       hours.innerHTML = `<h3 id="today-hours-title" class="today-section-title">${esc(t('today_hours'))}</h3>
         <p class="settings-note">${esc(t('today_hours_note', { place: answer.place.city }))}</p>
-        <table class="today-hours">
-          <thead><tr>
-            <th scope="col">${esc(t('today_hour'))}</th>
-            <th scope="col">${esc(t('today_hour_time'))}</th>
-            <th scope="col">${esc(t('today_hour_ties'))}</th>
-            <th scope="col">${esc(t('today_hour_call'))}</th>
-          </tr></thead>
-          <tbody>${answer.hours.map((hour) => `<tr class="${hour.call === null ? '' : `call-${esc(hour.call)}`}">
-            <th scope="row"><span lang="zh-Hant">${esc(hour.branch)}</span> ${esc(hour.pinyin)} · ${esc(t('animal_' + hour.sign.toLowerCase()))}</th>
-            <td>${hour.spans.map((span) => `${esc(clock(span.start))}–${esc(clock(span.end))}`).join('<br>')}</td>
-            <td>${esc(hour.ties.map(tieName).join(', ') || '—')}</td>
-            <td>${hour.call === null ? '—' : `<span class="today-call-mark" aria-hidden="true"></span>${esc(t('today_call_' + hour.call))}`}</td>
-          </tr>`).join('')}</tbody>
-        </table>`;
+        <div class="today-hours-body">
+          ${dial()}
+          <table class="today-hours">
+            <thead><tr>
+              <th scope="col">${esc(t('today_hour'))}</th>
+              <th scope="col">${esc(t('today_hour_time'))}</th>
+              <th scope="col">${esc(t('today_hour_ties'))}</th>
+              <th scope="col">${esc(t('today_hour_call'))}</th>
+            </tr></thead>
+            <tbody>${answer.hours.map((hour) => `<tr class="${hour.call === null ? '' : `call-${esc(hour.call)}`}">
+              <th scope="row"><span lang="zh-Hant">${esc(hour.branch)}</span> ${esc(hour.pinyin)} · ${esc(t('animal_' + hour.sign.toLowerCase()))}</th>
+              <td>${hour.spans.map((span) => `${esc(clock(span.start))}–${esc(clock(span.end))}`).join('<br>')}</td>
+              <td>${esc(hour.ties.map(tieName).join(', ') || '—')}</td>
+              <td>${hour.call === null ? '—' : `<span class="today-call-mark" aria-hidden="true"></span>${esc(t('today_call_' + hour.call))}`}</td>
+            </tr>`).join('')}</tbody>
+          </table>
+        </div>`;
     };
 
     // ── The panel's topics ──
@@ -341,12 +582,12 @@
         <h4 class="today-detail-subtitle">${esc(layerName(name))} · ${characters(stem, branch)}</h4>
         <p>${esc(t('today_layer_pull', { pull: pull(layer.pull) }))}</p>
         ${partsTable(layer)}
-        ${layer.relationships.length ? `<ul class="today-relationships">${layer.relationships.map(relationshipItem).join('')}</ul>` : ''}
+        ${layer.relationships.length ? `<ul class="today-relationships">${layer.relationships.map((r) => relationshipItem(r)).join('')}</ul>` : ''}
         ${readingOf(name, layer)}
       </section>`;
     };
     const palace = (title, place) => `<h4 class="today-detail-subtitle">${esc(title)} · <span lang="zh-Hant">${esc(place.branch)}</span> ${esc(place.pinyin)}</h4>
-      ${place.relationships.length ? `<ul class="today-relationships">${place.relationships.map(relationshipItem).join('')}</ul>`
+      ${place.relationships.length ? `<ul class="today-relationships">${place.relationships.map((r) => relationshipItem(r)).join('')}</ul>`
         : `<p class="settings-note">${esc(t('today_palace_quiet'))}</p>`}`;
     const topicMarkup = (topic) => {
       if (topic === 'day') {
@@ -372,7 +613,7 @@
           ${m.partner.luck === null ? '' : `<p>${esc(t('today_their_luck', { name: other, pull: pull(m.partner.luck.pull) }))} ${characters(m.partner.luck.pillar.stem, m.partner.luck.pillar.branch)}</p>`}
           ${palace(t('today_spouse_palace'), m.spouse_palace)}
           <h4 class="today-detail-subtitle">${esc(t('today_with_their_chart', { name: other }))}</h4>
-          ${m.partner_chart.length ? `<ul class="today-relationships">${m.partner_chart.map(relationshipItem).join('')}</ul>`
+          ${m.partner_chart.length ? `<ul class="today-relationships">${m.partner_chart.map((r) => relationshipItem(r)).join('')}</ul>`
             : `<p class="settings-note">${esc(t('today_palace_quiet'))}</p>`}`;
       }
       if (topic === 'work') {
@@ -423,8 +664,11 @@
     const draw = () => {
       drawBar();
       drawTopics();
+      drawDays();
       drawRun();
+      drawScale();
       drawPillars();
+      drawCouple();
       drawInChart();
       drawHours();
       drawPanel();
@@ -453,6 +697,9 @@
     // it, and its open topic, are no longer shown.
     const instead = (text, actions) => keepingFocus(() => {
       body.classList.add('hidden');
+      // No run is drawn: steps are calendar days again.
+      daysRun = null;
+      clearDays();
       panel.classList.add('hidden');
       view.classList.remove('has-panel');
       detail.innerHTML = '';
@@ -463,8 +710,12 @@
     // its answer is drawn, the day is neither copied as text nor printed.
     const show = async (next) => {
       if (!DAY_PATH.test(next.day) || (next.topic !== null && !TOPIC_PATH.test(next.topic))) throw new Error(t('today_answer_error'));
+      const before = state?.day ?? null;
       state = next;
       answer = null;
+      // The days move at once, from the run drawn; the rest waits, dimmed, for the day's
+      // own answer.
+      if (before !== null && before !== next.day && layDays(next.day, next.day > before ? 1 : -1)) markRun(next.day);
       ready(false);
       const mine = ++asked;
       view.classList.remove('hidden');
@@ -565,7 +816,10 @@
       whoSwitch.classList.add('hidden');
       clearNotice();
       body.classList.add('hidden');
-      for (const part of [pullLine, topics, run, pillars, inChart, hours]) part.replaceChildren();
+      for (const part of [pullLine, topics, run, scale, pillarsNote, pillars, couple, inChart, hours]) part.replaceChildren();
+      couple.classList.add('hidden');
+      daysRun = null;
+      clearDays();
       panel.classList.add('hidden');
       view.classList.remove('has-panel');
       detail.replaceChildren();
@@ -576,9 +830,88 @@
     steps.addEventListener('click', (event) => {
       if (state === null) return;
       const step = event.target.closest('[data-today-step]');
-      if (step) move({ day: stepDay(state.day, Number(step.dataset.todayStep)) });
+      if (step) move({ day: stepped(Number(step.dataset.todayStep)) });
       else if (event.target.closest('[data-today-now]') && shownSettings?.place) move({ day: todayAt(shownSettings.place.timezone) });
     });
+    // The days: a press on a neighbour picks it; Left and Right step, Home and End go to
+    // the run's first and last day, while the days have focus (a held key steps once).
+    daysTrack.addEventListener('click', (event) => {
+      const chosen = event.target.closest('[data-today-pick]');
+      if (chosen && state !== null && chosen.dataset.todayPick !== state.day) move({ day: chosen.dataset.todayPick });
+    });
+    days.addEventListener('keydown', (event) => {
+      if (state === null || event.metaKey || event.ctrlKey || event.altKey || event.repeat) return;
+      let day = null;
+      if (event.key === 'ArrowLeft') day = stepped(-1);
+      else if (event.key === 'ArrowRight') day = stepped(1);
+      else if (event.key === 'Home' && daysRun !== null) day = daysRun[0].date;
+      else if (event.key === 'End' && daysRun !== null) day = daysRun.at(-1).date;
+      else return;
+      event.preventDefault();
+      if (day !== state.day) move({ day });
+    });
+    // A swipe or drag on the days moves them with the pointer that started it, once it
+    // has gone 40px across (more than a touch hold's 10px), and not from the screen's left
+    // edge, which is iOS's Back. Let go, the day steps by as many days as it went, one at
+    // least, and the click that ends it opens nothing. Vertical scrolling stays the
+    // page's (touch-action: pan-y); a cancel, a lost capture or a second pointer moves
+    // nothing.
+    let drag = null;
+    let draggedAway = false;
+    const dropDrag = () => {
+      drag = null;
+      days.classList.remove('is-dragging');
+      days.style.removeProperty('--drag');
+    };
+    daysTrack.addEventListener('pointerdown', (event) => {
+      if (drag !== null) {
+        dropDrag();
+        return;
+      }
+      if (state === null || daysRun === null || event.button !== 0 || event.clientX < 24) return;
+      drag = { id: event.pointerId, x: event.clientX, y: event.clientY, dx: 0, moving: false };
+    });
+    daysTrack.addEventListener('pointermove', (event) => {
+      if (drag === null || event.pointerId !== drag.id) return;
+      const dx = event.clientX - drag.x;
+      if (!drag.moving) {
+        // Up or down first: the page scrolls, and this is no drag.
+        if (Math.abs(event.clientY - drag.y) > Math.max(Math.abs(dx), 10)) {
+          dropDrag();
+          return;
+        }
+        if (Math.abs(dx) < DRAG) return;
+        drag.moving = true;
+        daysTrack.setPointerCapture(drag.id);
+        days.classList.add('is-dragging');
+      }
+      drag.dx = dx;
+      days.style.setProperty('--drag', `${dx}px`);
+    });
+    daysTrack.addEventListener('pointerup', (event) => {
+      if (drag === null || event.pointerId !== drag.id) return;
+      const { dx, moving } = drag;
+      dropDrag();
+      if (!moving || state === null) return;
+      draggedAway = true;
+      setTimeout(() => {
+        draggedAway = false;
+      }, 0);
+      const width = dayNodes.get(state.day)?.getBoundingClientRect().width || 1;
+      const by = Math.max(1, Math.round(Math.abs(dx) / width)) * (dx < 0 ? 1 : -1);
+      const day = stepped(by);
+      if (day !== state.day) move({ day });
+    });
+    for (const type of ['pointercancel', 'lostpointercapture']) {
+      daysTrack.addEventListener(type, (event) => {
+        if (drag !== null && event.pointerId === drag.id) dropDrag();
+      });
+    }
+    daysTrack.addEventListener('click', (event) => {
+      if (!draggedAway) return;
+      draggedAway = false;
+      event.stopImmediatePropagation();
+    }, true);
     run.addEventListener('click', (event) => {
       const chosen = event.target.closest('[data-today-day]');
       if (chosen && state !== null && chosen.dataset.todayDay !== state.day) move({ day: chosen.dataset.todayDay });
@@ -619,16 +952,22 @@
     // The day as text, for notes and messages: the same numbers as the page.
     const text = () => {
       if (answer === null) return '';
+      const partner = shownSettings === null ? null : partnerOf(shownSettings);
+      const other = state.who === 'partner' ? t('today_self') : (partner === null ? null : partnerName(partner));
       const lines = [
         `${longDate(state.day)} · ${chartLine.textContent}`,
         t('today_schools_used', { schools: Object.values(answer.schools).join(', ') }),
         t('today_pull_line', { pull: pull(answer.layers.day.pull) }),
+        GODS.map((god) => godLine(god, answer.favourable.gods[god])).join(' · '),
         ...LAYERS.map((name) => {
           const layer = answer.layers[name];
           if (layer === null) return `${layerName(name)}: ${t('today_no_luck')}`;
           const { stem, branch } = layer.pillar;
           return `${layerName(name)}: ${stem.chinese}${branch.chinese} ${stem.pinyin} ${branch.pinyin} · ${pull(layer.pull)}`;
         }),
+        ...(answer.marriage === null ? [] : [
+          `${other}: ${pull(answer.marriage.partner.pull)} · ${t(answer.marriage.pull_apart ? 'today_pull_apart' : 'today_pull_not_apart')}`,
+        ]),
         `${t('today_run_label')}:`,
         ...answer.run.map((day) => `  ${shortDate(day.date)} ${day.pillar.stem.chinese}${day.pillar.branch.chinese} · ${pull(day)}`),
         `${t('today_hours')}:`,
@@ -653,8 +992,8 @@
     const keydown = (event) => {
       if (state === null || event.metaKey || (event.ctrlKey && !event.altKey) || event.repeat) return false;
       const plain = !event.ctrlKey && !event.altKey;
-      if (event.key === '[') move({ day: stepDay(state.day, -1) });
-      else if (event.key === ']') move({ day: stepDay(state.day, 1) });
+      if (event.key === '[') move({ day: stepped(-1) });
+      else if (event.key === ']') move({ day: stepped(1) });
       else if (plain && event.key.toLowerCase() === 'n' && shownSettings?.place) move({ day: todayAt(shownSettings.place.timezone) });
       else if (event.key === 'Escape' && state.topic !== null) closeTopic();
       else return false;
@@ -664,8 +1003,8 @@
     const commands = () => {
       if (state === null) return [];
       const list = [
-        { label: t('today_previous'), run: () => move({ day: stepDay(state.day, -1) }), icon: 'chevron-left' },
-        { label: t('today_next'), run: () => move({ day: stepDay(state.day, 1) }), icon: 'chevron-right' },
+        { label: t('today_previous'), run: () => move({ day: stepped(-1) }), icon: 'chevron-left' },
+        { label: t('today_next'), run: () => move({ day: stepped(1) }), icon: 'chevron-right' },
       ];
       if (shownSettings?.place) list.push({ label: t('today_now'), run: () => move({ day: todayAt(shownSettings.place.timezone) }), icon: 'calendar-check' });
       const partner = shownSettings === null ? null : partnerOf(shownSettings);
