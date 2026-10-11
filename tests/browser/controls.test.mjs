@@ -215,6 +215,26 @@ for (const profile of profiles) {
         }
       });
 
+      check('a touch hold is its finger’s alone: another pointer moving, lifting or cancelling leaves it', async (page) => {
+        await openChart(page);
+        const gods = page.locator('[data-display="ten-gods"]');
+        await gods.scrollIntoViewIfNeeded(); await settled(page);
+        const box = await gods.boundingBox(); assert.ok(box);
+        const finger = { pointerType: 'touch', pointerId: 44, isPrimary: true,
+          clientX: box.x + box.width / 2, clientY: box.y + box.height / 2, bubbles: true };
+        // After a scroll, WebKit moves its mouse pointer back to where the last tap was.
+        const mouse = { pointerType: 'mouse', pointerId: 1, isPrimary: true, clientX: 5, clientY: 5, bubbles: true };
+        for (const type of ['pointermove', 'pointerup', 'pointercancel']) {
+          await gods.dispatchEvent('pointerdown', finger);
+          await page.locator('body').dispatchEvent(type, mouse);
+          await tipOpen(page);
+          assert.equal(await page.locator(tipSelector + ' strong').textContent(), 'Ten Gods', `another pointer's ${type}`);
+          // The finger's own move still ends the hold.
+          await gods.dispatchEvent('pointermove', { ...finger, clientX: finger.clientX + 40 });
+          await tipClosed(page);
+        }
+      });
+
       check('leaving non-control content does not cancel a subsequent touch hold', async (page) => {
         await openChart(page);
         const gods = page.locator('[data-display="ten-gods"]');
