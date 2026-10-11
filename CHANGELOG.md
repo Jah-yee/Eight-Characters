@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.51.0
+
+The new Today (#80): the day in the chart's own cards and colours (#77, slice 3).
+
+### Added
+- **The days**: the chosen day in the middle as the chart's cards (each character in
+  its own element's colours, with its pinyin, its trigram or hexagram and its name),
+  two days of the run on either side, smaller, one on a phone. Left and Right step
+  while they have focus, Home and End go to the run's ends, a press picks a neighbour,
+  and a swipe or drag steps by the days it went, asking once when let go. Reduced
+  motion moves nothing.
+- **The pull as a scale**, from −3.5 to +3.5 for every day and layer, its ends named in
+  words by the chart's useful and unfavourable elements, with the five gods.
+- **The couple**: both pulls of the day on one neutral scale, and whether the day pulls
+  them apart.
+- **In your chart** draws the pillars each relationship joins, the chart's own among
+  them, three where there are three.
+- **The hours as a dial**, in true solar order and their elements' colours, with each
+  call's mark and the hour now on today, beside the unchanged table.
+- **The API**: Today's answer gives `natal`, the chart's own four pillars (the
+  partner's with `chart: partner`), and `lines` on every stem and branch, as Standard
+  mode's card draws them. Both are additive; `today_v1` keeps its meaning.
+
+### Changed
+- **The run** is a strip of 22 bars around a zero line; each day's text stays in its
+  button, for the reader and for print.
+- **The four pillars** are drawn as small cards, at noon where you are.
+- **Every step goes through the run's own days**, `[` and `]` included, so a date the
+  place's clocks skipped is passed over; beyond the run, a step is a calendar day.
+- **Copy as text** gives the five gods after the pull line and, in a couple, the other
+  side's pull. **Print** gives the chosen day alone, the hours' table without the
+  dial, and while a day is on its way says so rather than the day before.
+
+### Fixed
+- An answer with a pull past the scale, or a pillar without its lines, is refused as
+  malformed instead of drawn.
+
+### Tests
+- `today.test.mjs`: the days (press, keys, a held key, drag, cancel, reduced motion,
+  Apia's skipped day), the scale, In your chart's pillars, the dial, the couple, the
+  five gods in Copy as text, print while a day is on its way.
+- `test_api_today.py`: `natal` and `lines`. `test_schools.py`: no pull passes the
+  scale's ends.
+
 ## 0.50.1
 
 What the reviews of #79 found in the pages of 0.50.0.
