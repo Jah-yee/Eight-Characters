@@ -1,8 +1,9 @@
-// Settings: what the account keeps for a chart's day (docs/Standard-Settings.md): a
-// partner's chart, where you are, and the schools the day follows. What they hold comes
-// from the API (GET /api/account/settings, GET /api/schools). Every change names the
-// account by its key and the settings it was made from by their `updated_at`, so a
-// change made in another tab is refused (412) rather than silently undone.
+// Settings: what the account keeps (docs/Standard-Settings.md): its saved charts, which
+// of them is the person's own, the couples they form, where you are, and the schools
+// the day follows. What they hold comes from the API (GET /api/account/settings, GET
+// /api/schools). Every change names the account by its key and the settings it was
+// made from by their `updated_at`, so a change made in another tab is refused (412)
+// rather than silently undone.
 (() => {
   const SETTINGS = ['favourable', 'season', 'transits'];
   const PILLARS = ['hour', 'day', 'month', 'year'];
@@ -15,9 +16,13 @@
     }
   }
 
-  const create = ({ view, translate: t, escape: esc, format, language, account, onOpenChart, onNewChart, onClose, onChanged, toast }) => {
+  const create = ({ view, translate: t, escape: esc, format, language, account, onOpenChart, onAddBirth, onClose, onChanged, toast }) => {
+    if (!window.EC_LIBRARY) throw new Error('Settings need the library.');
+    const library = window.EC_LIBRARY;
     const statusLine = view.querySelector('#settings-status');
-    const partnerBody = view.querySelector('#settings-partner-body');
+    const mineBody = view.querySelector('#settings-mine-body');
+    const couplesBody = view.querySelector('#settings-couples-body');
+    const chartsBody = view.querySelector('#settings-charts-body');
     const placeNow = view.querySelector('#settings-place-now');
     const placeForm = view.querySelector('#settings-place-form');
     const placeInput = view.querySelector('#settings-location');
@@ -27,7 +32,7 @@
     const placeRemove = view.querySelector('#settings-place-remove');
     const schoolsBody = view.querySelector('#settings-schools-body');
     const closeButton = view.querySelector('#settings-close');
-    if (!statusLine || !partnerBody || !placeNow || !placeForm || !placeInput || !suggestionList || !placeStatus
+    if (!statusLine || !mineBody || !couplesBody || !chartsBody || !placeNow || !placeForm || !placeInput || !suggestionList || !placeStatus
       || !placeSave || !placeRemove || !schoolsBody || !closeButton) throw new Error('Settings view is incomplete.');
 
     // The settings as the API last gave them, and the schools it lists.
@@ -51,8 +56,8 @@
     let replaced = '';
     let generation = 0;
     // The basis of the settings last drawn here: a change from this page's controls is
-    // made from them, so settings read meanwhile by Today or a chart's bar (another
-    // partner saved elsewhere, say) replace them, and the change is not made.
+    // made from them, so settings read meanwhile by Today or the library (a chart saved
+    // elsewhere, say) replace them, and the change is not made.
     let drawnBasis = -1;
     // The settings last drawn here, which this page's controls show.
     let drawn = null;
@@ -77,12 +82,23 @@
       }
       return value;
     };
-    // The answer must be the settings: a malformed one is said, never drawn.
+    // The answer must be the settings: a malformed one is said, never drawn. Every
+    // reference names a saved chart.
+    const isId = (value) => typeof value === 'string' && /^[0-9a-f]{32}$/.test(value);
     const checked = (value) => {
+      const charts = Array.isArray(value?.charts) ? value.charts : null;
+      const ids = new Set(charts?.map((chart) => chart?.id));
       const ok = value && typeof value === 'object' && typeof value.key === 'string'
         && (value.updated_at === null || typeof value.updated_at === 'string')
         && SETTINGS.every((name) => typeof value.schools?.[name] === 'string' && Object.hasOwn(value.chosen ?? {}, name))
-        && (value.partner === null || typeof value.partner === 'object')
+        && charts !== null && charts.every((chart) => isId(chart?.id) && typeof chart.date === 'string'
+          && typeof chart.time === 'string' && typeof chart.place === 'object' && chart.place !== null
+          && (chart.pillars === null ? typeof chart.problem === 'string' : typeof chart.pillars === 'object'))
+        && ids.size === charts.length
+        && (value.my_chart === null || ids.has(value.my_chart))
+        && (value.pending_partner === null || ids.has(value.pending_partner))
+        && Array.isArray(value.couples) && value.couples.every((couple) => isId(couple?.id)
+          && Array.isArray(couple.charts) && couple.charts.length === 2 && couple.charts.every((id) => ids.has(id)))
         && (value.place === null || typeof value.place === 'object');
       if (!ok) throw new Error(t('settings_answer_error', { status: 200 }));
       return value;
@@ -209,67 +225,193 @@
       return false;
     };
 
-    // ── Your partner's chart ──
+    // ── Your chart, your couples and your saved charts ──
     const birthHeading = (birth) => {
       const reading = format.parseWallClock(`${birth.date}T${birth.time}`);
       if (!reading) throw new Error(t('settings_answer_error', { status: 200 }));
       return [format.date(reading), format.time(reading, birth.time.length > 5), birth.place.city].join(' · ');
     };
-    // The chart link of a saved birth, as a chart's own bar would write it.
-    const chartParams = (birth) => {
-      const params = new URLSearchParams({
-        date: birth.date,
-        time: birth.time,
-        place: birth.place.name,
-        city: birth.place.city,
-        latitude: String(birth.place.latitude),
-        longitude: String(birth.place.longitude),
-        timezone: birth.place.timezone,
-        lang: language(),
-      });
-      params.set('gender', birth.gender);
-      if (birth.zi !== 'split_midnight') params.set('zi', birth.zi);
-      // A time the place's clocks repeat names its pass, as the saved birth does.
-      if (birth.fold !== null) params.set('fold', String(birth.fold));
-      return params.toString();
+    const chartName = (chart) => chart.name ?? t('library_unnamed');
+    // A saved chart as a card: its name, its marks, its birth and its pillars.
+    const card = (kept, chart, actions) => {
+      const partner = library.partnerOf(kept, chart.id);
+      const marks = [
+        chart.id === kept.my_chart ? `<span class="saved-mark is-mine">${esc(t('library_mine'))}</span>` : '',
+        partner === null ? '' : `<span class="saved-mark">${esc(t('library_with', { name: chartName(partner) }))}</span>`,
+        chart.id === kept.pending_partner ? `<span class="saved-mark">${esc(t('settings_waiting'))}</span>` : '',
+      ].join('');
+      return `<li class="saved-card" data-chart="${esc(chart.id)}">
+          <p class="saved-head"><span class="saved-name">${esc(chartName(chart))}</span>${marks}</p>
+          <p class="saved-birth">${esc(birthHeading(chart))}</p>
+          ${library.strip(chart, { escape: esc, translate: t })}
+          <div class="settings-actions">${actions}</div>
+        </li>`;
     };
-    const partnerName = (partner) => partner.name ?? t('settings_partner_unnamed');
-    const drawPartner = () => {
-      const partner = settings.partner;
-      if (partner === null) {
-        partnerBody.innerHTML = `
-          <p class="settings-note">${esc(t('settings_partner_none'))}</p>
-          <div class="settings-actions">
-            <button type="button" class="bar-action" data-settings-action="new">${esc(t('settings_partner_new'))}</button>
-          </div>`;
+    const action = (name, chart, label, extra = '') => `<button type="button" class="bar-action" data-settings-action="${name}"
+        ${chart === null ? '' : `data-chart="${esc(chart.id)}"`} ${extra}>${esc(label)}</button>`;
+    const options = (charts, chosen = null) => charts.map((chart) => `<option value="${esc(chart.id)}"${chart.id === chosen ? ' selected' : ''}>${esc(
+      `${chartName(chart)} · ${birthHeading(chart)}`,
+    )}</option>`).join('');
+
+    const drawMine = () => {
+      const mine = settings.my_chart === null ? null : library.chartWith(settings, settings.my_chart);
+      const others = settings.charts.filter((chart) => chart.id !== settings.my_chart);
+      const choose = others.length === 0 ? '' : `
+        <div class="settings-choose">
+          <label for="settings-mine-choice">${esc(t(mine === null ? 'settings_mine_choose' : 'settings_mine_change'))}</label>
+          <select id="settings-mine-choice">${options(others)}</select>
+          ${action('mark', null, t('settings_mine_mark'))}
+        </div>`;
+      mineBody.innerHTML = `${mine === null
+        ? `<p class="settings-note">${esc(t('settings_mine_none'))}</p>`
+        : `<ul class="saved-cards">${card(settings, mine, `${action('open', mine, t('settings_chart_open'))}${action('unmark', mine, t('settings_mine_clear'))}`)}</ul>`}
+        ${choose}
+        <div class="settings-actions">${action('add-mine', null, t('settings_new_birth'))}</div>`;
+    };
+
+    const drawCouples = () => {
+      const single = settings.charts.filter((chart) => library.coupleOf(settings, chart.id) === null);
+      const couples = settings.couples.map((couple) => {
+        const [first, second] = couple.charts.map((id) => library.chartWith(settings, id));
+        return `<li class="couple-card" data-couple="${esc(couple.id)}">
+            <p class="couple-names"><span class="saved-name">${esc(chartName(first))}</span>
+              <span class="couple-and" aria-hidden="true">＆</span><span class="sr-only">${esc(t('couple_and'))}</span>
+              <span class="saved-name">${esc(chartName(second))}</span></p>
+            <div class="couple-strips">${library.strip(first, { escape: esc, translate: t })}${library.strip(second, { escape: esc, translate: t })}</div>
+            <div class="settings-actions">
+              <button type="button" class="bar-action" data-settings-action="end" data-couple="${esc(couple.id)}">${esc(t('settings_couple_end'))}</button>
+            </div>
+          </li>`;
+      }).join('');
+      const pending = settings.pending_partner === null ? null : library.chartWith(settings, settings.pending_partner);
+      // The partner's side: my chart when it is free, else the first chart that is.
+      const side = single.find((chart) => chart.id === settings.my_chart) ?? single[0] ?? null;
+      couplesBody.innerHTML = `
+        ${couples === '' ? `<p class="settings-note">${esc(t('settings_couples_none'))}</p>` : `<ul class="couple-cards">${couples}</ul>`}
+        ${pending === null ? '' : `<p class="settings-note">${esc(t('settings_pending', { name: chartName(pending) }))}</p>`}
+        ${single.length < 2 ? '' : `
+          <div class="settings-choose settings-pair">
+            <label for="settings-pair-first">${esc(t('settings_pair_first'))}</label>
+            <select id="settings-pair-first">${options(single, side?.id)}</select>
+            <label for="settings-pair-second">${esc(t('settings_pair_second'))}</label>
+            <select id="settings-pair-second">${options(single, single.find((chart) => chart.id !== side?.id)?.id)}</select>
+            ${action('pair', null, t('settings_pair'))}
+          </div>`}
+        ${side === null ? '' : `
+          <div class="settings-choose">
+            <label for="settings-partner-of">${esc(t('settings_partner_of'))}</label>
+            <select id="settings-partner-of">${options(single, side.id)}</select>
+            ${action('add-partner', null, t('settings_partner_new_birth'))}
+          </div>`}`;
+    };
+
+    // A rename is asked for in place, on the chart's card.
+    let renaming = null;
+    const drawCharts = () => {
+      chartsBody.innerHTML = settings.charts.length === 0
+        ? `<p class="settings-note">${esc(t('settings_charts_none'))}</p>`
+        : `<ul class="saved-cards">${settings.charts.map((chart) => card(settings, chart, renaming === chart.id
+          ? `<form class="settings-rename" data-chart="${esc(chart.id)}" novalidate>
+              <label for="settings-rename-${esc(chart.id)}">${esc(t('settings_rename_label'))}</label>
+              <input type="text" id="settings-rename-${esc(chart.id)}" maxlength="80" autocomplete="off" spellcheck="false" value="${esc(chart.name ?? '')}">
+              <button type="submit" class="bar-action" data-settings-action="rename-save" data-chart="${esc(chart.id)}">${esc(t('settings_rename_save'))}</button>
+              <button type="button" class="bar-action" data-settings-action="rename-cancel" data-chart="${esc(chart.id)}">${esc(t('cancel'))}</button>
+            </form>`
+          : `${chart.pillars === null ? '' : action('open', chart, t('settings_chart_open'))}${action('rename', chart, t('settings_chart_rename'))}${action('correct', chart, t('settings_chart_correct'))}${action('remove', chart, t('settings_chart_remove'))}`)).join('')}</ul>`;
+      chartsBody.insertAdjacentHTML('beforeend', `<p class="settings-note">${esc(t('settings_consent'))}</p>`);
+    };
+
+    // What a change from these parts asks the API, made from the settings drawn here.
+    const chosenIn = (selector) => view.querySelector(selector)?.value ?? null;
+    const onLibrary = async (event) => {
+      const button = event.target.closest('[data-settings-action]');
+      if (!button || drawn === null) return;
+      const id = button.dataset.chart ?? null;
+      const chart = id === null ? null : library.chartWith(drawn, id);
+      switch (button.dataset.settingsAction) {
+        case 'open':
+          if (chart !== null) onOpenChart(library.chartParams(chart, language()));
+          break;
+        case 'mark': {
+          const chosen = chosenIn('#settings-mine-choice');
+          if (chosen !== null) await change('PUT', '/api/account/my-chart', { chart: chosen }, t('settings_mine_marked'));
+          break;
+        }
+        case 'unmark':
+          await change('DELETE', '/api/account/my-chart', {}, t('settings_mine_cleared'));
+          break;
+        case 'add-mine':
+          onAddBirth({ as: 'mine' });
+          break;
+        case 'pair': {
+          const first = chosenIn('#settings-pair-first');
+          const second = chosenIn('#settings-pair-second');
+          if (first === null || second === null) break;
+          if (first === second) {
+            say(t('settings_pair_same'), true);
+            break;
+          }
+          await change('POST', '/api/account/couples', { charts: [first, second] }, t('settings_paired'));
+          break;
+        }
+        case 'add-partner': {
+          const of = chosenIn('#settings-partner-of');
+          if (of !== null) onAddBirth({ as: 'partner', with: of });
+          break;
+        }
+        case 'end':
+          await change('DELETE', `/api/account/couples/${encodeURIComponent(button.dataset.couple)}`, {}, t('settings_couple_ended'));
+          break;
+        case 'rename':
+          renaming = id;
+          draw();
+          view.querySelector(`#settings-rename-${CSS.escape(id)}`)?.focus();
+          break;
+        case 'rename-cancel':
+          renaming = null;
+          draw();
+          view.querySelector(`[data-settings-action="rename"][data-chart="${CSS.escape(id)}"]`)?.focus();
+          break;
+        case 'correct':
+          if (chart !== null) onAddBirth({ as: 'correct', chart: chart.id });
+          break;
+        case 'remove':
+          if (chart === null) break;
+          // Asked once more on the button itself: a second press removes.
+          if (button.dataset.confirming !== 'true') {
+            button.dataset.confirming = 'true';
+            button.textContent = t('settings_chart_remove_confirm', { name: chartName(chart) });
+            break;
+          }
+          await change('DELETE', `/api/account/charts/${encodeURIComponent(chart.id)}`, {}, t('settings_chart_removed'));
+          break;
+        default:
+          break;
+      }
+    };
+    [mineBody, couplesBody, chartsBody].forEach((part) => part.addEventListener('click', (event) => {
+      if (event.target.closest('button[type="submit"]')) return;
+      onLibrary(event).catch((err) => {
+        console.error(err);
+        say(err.message || t('settings_load_error'), true);
+      });
+    }));
+    chartsBody.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const formNode = event.target.closest('.settings-rename');
+      if (!formNode) return;
+      const id = formNode.dataset.chart;
+      const name = formNode.querySelector('input').value.trim();
+      // A name is one line of printable text, up to 80 characters, or none.
+      if (name.length > 80 || /\p{Cc}/u.test(name)) {
+        say(t('save_chart_name_error'), true);
         return;
       }
-      const pillars = partner.pillars === null
-        ? `<p class="settings-problem">${esc(t('settings_partner_problem', { problem: partner.problem }))}</p>`
-        : `<ol class="settings-pillars">${PILLARS.map((name) => {
-          const p = partner.pillars[name];
-          return `<li class="settings-pillar">
-              <span class="settings-pillar-name">${esc(t('pillar_' + name))}</span>
-              <span class="settings-pillar-chars" lang="zh-Hant">${esc(p.stem.chinese + p.branch.chinese)}</span>
-              <span class="settings-pillar-pinyin">${esc(`${p.stem.pinyin} ${p.branch.pinyin}`)}</span>
-            </li>`;
-        }).join('')}</ol>`;
-      partnerBody.innerHTML = `
-        <p class="settings-partner-name">${esc(partnerName(partner))}</p>
-        <p class="settings-note">${esc(birthHeading(partner))}</p>
-        ${pillars}
-        <div class="settings-actions">
-          ${partner.pillars === null ? '' : `<button type="button" class="bar-action" data-settings-action="open">${esc(t('settings_partner_open'))}</button>`}
-          <button type="button" class="bar-action" data-settings-action="remove">${esc(t('settings_partner_remove'))}</button>
-        </div>`;
-    };
-    partnerBody.addEventListener('click', async (event) => {
-      const action = event.target.closest('[data-settings-action]')?.dataset.settingsAction;
-      if (!action) return;
-      if (action === 'new') onNewChart();
-      // The chart on screen, as drawn: settings read since for elsewhere may name another.
-      else if (action === 'open') onOpenChart(chartParams(drawn.partner));
-      else await change('DELETE', '/api/account/partner', {}, t('settings_partner_removed'));
+      if (await change('PUT', `/api/account/charts/${encodeURIComponent(id)}/name`, { name: name === '' ? null : name }, t('settings_chart_renamed'))) {
+        renaming = null;
+        draw();
+        view.querySelector(`[data-settings-action="rename"][data-chart="${CSS.escape(id)}"]`)?.focus();
+      }
     });
 
     // ── Where you are: the place search, as the form's, here on its own ──
@@ -448,18 +590,26 @@
     const draw = () => {
       if (settings === null) return;
       const focused = view.contains(document.activeElement) ? document.activeElement : null;
-      const part = focused?.closest('#settings-partner-body, #settings-schools-body') ?? null;
+      const part = focused?.closest('#settings-mine-body, #settings-couples-body, #settings-charts-body, #settings-schools-body') ?? null;
       let counterpart = null;
       if (focused?.id) counterpart = `#${CSS.escape(focused.id)}`;
-      else if (focused?.dataset.settingsAction) counterpart = `[data-settings-action="${CSS.escape(focused.dataset.settingsAction)}"]`;
-      drawPartner();
+      else if (focused?.dataset.settingsAction) {
+        counterpart = `[data-settings-action="${CSS.escape(focused.dataset.settingsAction)}"]`
+          + (focused.dataset.chart ? `[data-chart="${CSS.escape(focused.dataset.chart)}"]` : '')
+          + (focused.dataset.couple ? `[data-couple="${CSS.escape(focused.dataset.couple)}"]` : '');
+      }
+      // A chart renamed or removed elsewhere ends its rename here.
+      if (renaming !== null && library.chartWith(settings, renaming) === null) renaming = null;
+      drawMine();
+      drawCouples();
+      drawCharts();
       drawPlace();
       if (catalog !== null) drawSchools();
       drawn = settings;
       drawnBasis = basis;
       if (focused === null || focusable(focused)) return;
       const found = counterpart === null ? null : view.querySelector(counterpart);
-      const next = found !== null && focusable(found) ? found : [...(part?.querySelectorAll('button, input') ?? [])].find(focusable);
+      const next = found !== null && focusable(found) ? found : [...(part?.querySelectorAll('button, input, select') ?? [])].find(focusable);
       // The place's Remove, gone with the place, hands focus to the place's search.
       (next ?? placeInput).focus();
     };
@@ -494,11 +644,15 @@
     };
     closeButton.addEventListener('click', () => onClose());
 
-    // Keeps a birth as the partner's chart, as a chart's bar asks (app.js): null once
-    // kept, or why not.
-    // Save as partner (app.js) makes its change from the settings its dialog read, by the
-    // basis they had then (basis()).
-    const savePartner = async (birth, from) => write('PUT', '/api/account/partner', birth, from);
+    // Keeps a birth in the library, as the library's Save and the form's save mode ask
+    // (app.js): null once kept, or why not. `mine` and `couple_with` mark it as the
+    // person's own, or pair it, in the same write. Each change is made from the settings
+    // its dialog or form read, by the basis they had then (basis()).
+    const saveChart = async (birth, { mine = false, coupleWith = null } = {}, from) => write(
+      'POST', '/api/account/charts', { ...birth, mine, ...(coupleWith === null ? {} : { couple_with: coupleWith }) }, from,
+    );
+    // Corrects a saved chart's birth: it keeps its id, its mark and its couple.
+    const correctChart = async (id, birth, from) => write('PUT', `/api/account/charts/${encodeURIComponent(id)}`, birth, from);
 
     return {
       show,
@@ -506,8 +660,9 @@
       load,
       current: () => settings,
       basis: () => basis,
-      savePartner,
-      partnerName,
+      saveChart,
+      correctChart,
+      chartName,
       // A sign-out forgets what was read for the account and leaves nothing of it on the
       // page, and the changes still waiting are not made.
       forget: () => {
@@ -516,7 +671,10 @@
         generation += 1;
         basis += 1;
         replaced = t('account_session_ended');
-        partnerBody.innerHTML = '';
+        renaming = null;
+        mineBody.innerHTML = '';
+        couplesBody.innerHTML = '';
+        chartsBody.innerHTML = '';
         placeNow.textContent = '';
         placeRemove.classList.add('hidden');
         schoolsBody.innerHTML = '';

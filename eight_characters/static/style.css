@@ -3087,7 +3087,7 @@ kbd {
 .is-embedded #new-chart-btn,
 .is-embedded #compare-btn,
 .is-embedded #page-switch,
-.is-embedded #save-partner-btn,
+.is-embedded #library-btn,
 .is-embedded .account-btn { display: none; }
 .is-embedded { --page-block: var(--space-4); }
 .is-embedded body { padding: var(--page-block) var(--space-4); }
@@ -3167,37 +3167,163 @@ body:has(> .compare-container:not(.hidden)) { padding: var(--space-4); }
   flex-wrap: wrap;
   gap: var(--space-2) var(--space-3);
 }
-.settings-partner {
+/* ── Saved charts: in Settings and in the chart's library (library.js) ── */
+.settings-library {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
 }
-.settings-partner-name {
+.saved-cards,
+.couple-cards {
+  list-style: none;
+  display: grid;
+  gap: var(--space-3);
+}
+.saved-card,
+.couple-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--line-1);
+  border-radius: 14px;
+  background: var(--surface-1);
+}
+.saved-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+}
+.saved-name {
   font-family: var(--font-serif);
   font-size: var(--text-3);
   color: var(--ink-1);
   overflow-wrap: anywhere;
 }
-.settings-pillars {
+.saved-mark {
+  padding: 1px var(--space-2);
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  font-size: var(--text-1);
+  color: var(--ink-2);
+}
+.saved-mark.is-mine { border-color: var(--ink-2); color: var(--ink-1); font-weight: 600; }
+.saved-mark.is-here { background: var(--surface-3); }
+.saved-birth { font-size: var(--text-1); color: var(--ink-2); }
+.saved-problem { color: var(--ink-error); font-size: var(--text-1); }
+/* A saved chart's pillars, year first: a stem over its branch, each in its element's
+   colours and shaped as the chart's cards are. */
+.saved-strip {
+  list-style: none;
+  display: flex;
+  gap: var(--space-2);
+}
+.saved-pillar { display: grid; gap: 3px; }
+.saved-glyph {
+  display: grid;
+  justify-items: center;
+  width: 46px;
+  padding: 3px 0 4px;
+  background: var(--sheen), var(--el-bg);
+  color: var(--el-text);
+}
+.saved-glyph.stem { border-radius: 10px 10px 3px 3px; }
+.saved-glyph.branch { border-radius: 3px 3px 10px 10px; }
+.saved-glyph.wood { --el-bg: var(--wood-bg); --el-text: var(--wood-text); }
+.saved-glyph.fire { --el-bg: var(--fire-bg); --el-text: var(--fire-text); }
+.saved-glyph.earth { --el-bg: var(--earth-bg); --el-text: var(--earth-text); }
+.saved-glyph.metal { --el-bg: var(--metal-bg); --el-text: var(--metal-text); }
+.saved-glyph.water { --el-bg: var(--water-bg); --el-text: var(--water-text); }
+.saved-char { font-family: var(--font-glyph); font-size: var(--text-3); line-height: 1.15; }
+.saved-pinyin { font-size: 11px; font-weight: 600; line-height: 1.2; }
+.couple-names {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.couple-and { font-family: var(--font-serif); color: var(--ink-3); }
+.couple-strips { display: flex; flex-wrap: wrap; gap: var(--space-3) var(--space-5); }
+.settings-choose {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+.settings-choose label { font-size: var(--text-1); color: var(--ink-2); }
+.settings-choose select,
+.settings-rename input {
+  min-width: 0;
+  max-width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--ink-1);
+  font: inherit;
+  font-size: var(--text-2);
+}
+.settings-rename {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+.settings-rename label { font-size: var(--text-1); color: var(--ink-2); }
+
+/* The chart's heading names the chart if it is saved, and opens the library. */
+.library-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: 3px var(--space-3) 3px var(--space-2);
+  border: 1px solid var(--line-1);
+  border-radius: 999px;
+  background: var(--surface-1);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: var(--text-1);
+  cursor: pointer;
+}
+.library-btn[data-saved='true'] { color: var(--ink-1); border-color: var(--line-2); font-weight: 600; }
+.library-btn:hover { background: var(--surface-2); border-color: var(--line-2); }
+.library-btn:focus-visible { outline: 2px solid var(--ink-2); outline-offset: 2px; }
+.library-btn .control-icon { width: 15px; height: 15px; }
+.library-dialog { width: min(640px, calc(100% - 2 * var(--space-4))); }
+.library-dialog h2 {
+  margin-bottom: var(--space-4);
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: var(--text-4);
+  letter-spacing: var(--tracking-1);
+}
+.library-dialog[aria-busy='true'] { cursor: progress; }
+.library-list {
   list-style: none;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--space-2);
-  max-width: 440px;
+  margin-bottom: var(--space-4);
 }
-.settings-pillar {
+.library-chart {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-2);
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
   border: 1px solid var(--line-1);
-  border-radius: 10px;
+  border-radius: 14px;
   background: var(--surface-1);
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
 }
-.settings-pillar-name { font-size: var(--text-1); color: var(--ink-3); }
-.settings-pillar-chars { font-family: var(--font-glyph); font-size: var(--text-4); color: var(--ink-1); }
-.settings-pillar-pinyin { font-size: var(--text-1); color: var(--ink-2); }
+.library-chart:hover { background: var(--surface-2); border-color: var(--line-2); }
+.library-chart:focus-visible { outline: 2px solid var(--ink-2); outline-offset: 2px; }
+.library-chart.is-here { border-color: var(--ink-2); }
+.library-empty { color: var(--ink-2); font-size: var(--text-1); }
 .settings-problem { color: var(--ink-error); }
 .settings-place-form {
   display: flex;
@@ -3238,6 +3364,9 @@ body:has(> .compare-container:not(.hidden)) { padding: var(--space-4); }
 .settings-sources { color: var(--ink-3); font-size: var(--text-1); line-height: 1.4; overflow-wrap: anywhere; }
 .settings-default,
 .settings-han { color: var(--ink-2); }
+
+/* A saved birth's name, above the form's birth, when the form saves one. */
+.save-name-group { width: 260px; margin: 0 auto var(--space-5); }
 
 /* ── Today: the chart's day (today.js) ── */
 .today-notice {

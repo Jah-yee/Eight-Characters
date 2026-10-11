@@ -676,6 +676,15 @@ document.addEventListener('DOMContentLoaded', () => {
     document.title = t('chart_page_title', { chart: shown.heading });
     inputView.classList.add('hidden');
     chartView.classList.remove('hidden');
+    // The heading names the chart if it is saved, by the settings read for it.
+    library.sayName();
+    if (!embedded && account.signedIn()) {
+      const chosen = shown;
+      settingsPage.load(() => shown === chosen).then(() => library.sayName(), (err) => {
+        console.error(err);
+        library.sayName();
+      });
+    }
   };
 
   form.addEventListener('submit', async (e) => {
@@ -699,6 +708,29 @@ document.addEventListener('DOMContentLoaded', () => {
       date: form.date.value, time: form.time.value, place: resolvedLocation, lang: currentLanguage, zi: ZI_CONVENTIONS[0],
       gender: formGender(),
     });
+
+    // A birth from Settings is kept, and Settings shown again.
+    if (saving !== null) {
+      setPending(true);
+      let problem;
+      try {
+        problem = await saveBirth(request, resolvedLocation);
+      } catch (err) {
+        console.error(err);
+        problem = err.message || t('settings_load_error');
+      } finally {
+        setPending(false);
+      }
+      if (problem === null) {
+        showToast(requiredTranslation(saving.as === 'correct' ? 'save_corrected' : 'save_chart_saved'), false);
+        backToSettings('replaceState');
+      } else {
+        setFormError(problem);
+        // Refused, the settings may have been read again: the next save is made from them.
+        if (saving !== null) saving = { ...saving, basis: settingsPage.basis() };
+      }
+      return;
+    }
 
     // A comparison's second chart is drawn in its own frame: the address names the pair.
     if (comparingWith !== null) {
@@ -876,6 +908,10 @@ document.addEventListener('DOMContentLoaded', () => {
     embedded,
     // Signing in, or choosing the account's language, sets the page's.
     onLanguage: takeLanguage,
+    // Signed in from the account's own button, on the empty form: your chart opens.
+    onSignedIn: ({ requested }) => {
+      if (!requested && !embedded && location.hash === '' && !inputView.classList.contains('hidden')) openMyChart();
+    },
     // Signed out, the page starts again, empty, as New chart leaves it.
     onSignedOut: () => {
       // Whatever was on its way is abandoned: the page starts again, empty. The chart it
@@ -887,6 +923,7 @@ document.addEventListener('DOMContentLoaded', () => {
       compare.hide();
       settingsPage.forget();
       settingsPage.hide();
+      library.forget();
       today.forget();
       askForChart();
       leaveChart();
@@ -1574,6 +1611,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const askForChart = () => {
     comparingWith = null;
     compareNote.classList.add('hidden');
+    stopSaving();
     createChartBtn.setAttribute('data-i18n', 'create_chart');
     createChartBtn.textContent = t('create_chart');
   };
@@ -1629,13 +1667,12 @@ document.addEventListener('DOMContentLoaded', () => {
     language: () => currentLanguage,
     account,
     onOpenChart: (params) => goToChart(params),
-    onNewChart: () => {
-      settingsReturn = null;
-      addressForm('pushState');
+    onAddBirth: (mode) => {
+      const params = new URLSearchParams({ as: mode.as });
+      if (mode.with) params.set('with', mode.with);
+      if (mode.chart) params.set('chart', mode.chart);
+      history.pushState(null, '', `${formAddress()}${SAVE_ROUTE}${params}`);
       followAddress();
-      form.reset();
-      clearResolvedLocation();
-      dateInput.focus();
     },
     onClose: () => {
       const back = settingsReturn;
@@ -1643,7 +1680,8 @@ document.addEventListener('DOMContentLoaded', () => {
       history.pushState(null, '', back ?? formAddress());
       followAddress();
     },
-    onChanged: () => {},
+    // The chart's heading names the chart on screen as the settings now say.
+    onChanged: () => library.sayName(),
     toast: (text, isError) => showToast(text, isError),
   });
   const openSettings = () => {
@@ -1731,34 +1769,48 @@ document.addEventListener('DOMContentLoaded', () => {
     if (event.target.closest('button[data-page="today"]')) openToday();
   });
 
-  // Save as partner's chart: the chart on screen, kept as the partner's for its day
-  // (settings.js). It asks for a name and says what it replaces. The day needs the luck
-  // pillars, and so a gender.
-  const savePartnerBtn = document.getElementById('save-partner-btn');
-  const partnerDialog = document.getElementById('partner-dialog');
-  const partnerForm = document.getElementById('partner-form');
-  const partnerChart = document.getElementById('partner-dialog-chart');
-  const partnerReplaces = document.getElementById('partner-dialog-replaces');
-  const partnerNameInput = document.getElementById('partner-name');
-  const partnerNameStatus = document.getElementById('partner-name-status');
-  const partnerCancel = document.getElementById('partner-cancel');
-  if (!savePartnerBtn || !partnerDialog || !partnerForm || !partnerChart || !partnerReplaces || !partnerNameInput
-    || !partnerNameStatus || !partnerCancel) throw new Error('Saving a partner is incomplete.');
+  // The birth on screen, as the library tells births apart (library.js), or null when
+  // no chart is drawn.
+  const screenBirth = () => {
+    if (shown === null) return null;
+    const { request, place } = shown;
+    return {
+      date: request.date,
+      time: request.time,
+      place: {
+        name: place.display,
+        city: place.city,
+        timezone: request.location.timezone,
+        latitude: request.location.latitude,
+        longitude: request.location.longitude,
+      },
+      fold: request.location.fold ?? null,
+      gender: request.gender ?? null,
+      zi: request.conventions?.zi_convention ?? ZI_CONVENTIONS[0],
+    };
+  };
+
+  // Save the chart on screen: kept in the library (settings.js), with a name if one is
+  // given. The day needs the luck pillars, and so a gender.
+  const saveChartDialog = document.getElementById('save-chart-dialog');
+  const saveChartForm = document.getElementById('save-chart-form');
+  const saveChartChart = document.getElementById('save-chart-chart');
+  const saveChartName = document.getElementById('save-chart-name');
+  const saveChartStatus = document.getElementById('save-chart-status');
+  const saveChartCancel = document.getElementById('save-chart-cancel');
+  if (!saveChartDialog || !saveChartForm || !saveChartChart || !saveChartName || !saveChartStatus || !saveChartCancel) {
+    throw new Error('Saving a chart is incomplete.');
+  }
   // The chart the dialog saves, taken when it opened, and the basis of the settings it
   // read then: a save is made from them.
-  let partnerToSave = null;
-  let partnerBasis = null;
-  // Which saved partner's chart a save replaces, as the settings last read say.
-  const sayReplaces = (current) => {
-    const partner = current?.partner ?? null;
-    partnerReplaces.textContent = partner === null
-      ? '' : requiredTranslation('save_partner_replaces', { name: settingsPage.partnerName(partner) });
-    partnerReplaces.classList.toggle('hidden', partner === null);
-  };
-  savePartnerBtn.addEventListener('click', async () => {
-    if (shown === null) return;
+  let chartToSave = null;
+  let chartBasis = null;
+  // A name is one line of printable text, up to 80 characters, or none.
+  const nameProblem = (name) => (name.length > 80 || /\p{Cc}/u.test(name) ? requiredTranslation('save_chart_name_error') : null);
+  const openSaveChart = async () => {
+    if (shown === null || chartView.classList.contains('hidden') || saveChartDialog.open) return;
     if (!shown.request.gender) {
-      showToast(requiredTranslation('save_partner_needs_gender'), true);
+      showToast(requiredTranslation('save_chart_needs_gender'), true);
       return;
     }
     const chosen = shown;
@@ -1771,32 +1823,169 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     // Only for the chart still on screen, and once.
-    if (shown !== chosen || chartView.classList.contains('hidden') || partnerDialog.open) return;
-    partnerToSave = chosen;
-    partnerBasis = settingsPage.basis();
-    partnerChart.textContent = chosen.heading;
-    sayReplaces(current);
-    partnerNameInput.value = '';
-    partnerNameStatus.textContent = '';
-    partnerDialog.showModal();
-    partnerNameInput.focus();
-  });
-  partnerCancel.addEventListener('click', () => partnerDialog.close());
-  partnerDialog.addEventListener('close', () => {
-    partnerToSave = null;
-    partnerBasis = null;
-  });
-  partnerForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    if (partnerToSave === null) return;
-    const name = partnerNameInput.value.trim();
-    // A name is one line of printable text, up to 80 characters, or none.
-    if (name.length > 80 || /\p{Cc}/u.test(name)) {
-      partnerNameStatus.textContent = requiredTranslation('save_partner_name_error');
-      partnerNameInput.focus();
+    if (shown !== chosen || chartView.classList.contains('hidden') || saveChartDialog.open) return;
+    const saved = window.EC_LIBRARY.savedOf(current, screenBirth());
+    if (saved !== null) {
+      showToast(requiredTranslation('save_chart_saved_already', { name: settingsPage.chartName(saved) }), false);
+      library.sayName();
       return;
     }
-    const { request, place } = partnerToSave;
+    chartToSave = chosen;
+    chartBasis = settingsPage.basis();
+    saveChartChart.textContent = chosen.heading;
+    saveChartName.value = '';
+    saveChartStatus.textContent = '';
+    saveChartDialog.showModal();
+    saveChartName.focus();
+  };
+  saveChartCancel.addEventListener('click', () => saveChartDialog.close());
+  saveChartDialog.addEventListener('close', () => {
+    chartToSave = null;
+    chartBasis = null;
+  });
+  saveChartForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (chartToSave === null) return;
+    const name = saveChartName.value.trim();
+    const problemWithName = nameProblem(name);
+    if (problemWithName !== null) {
+      saveChartStatus.textContent = problemWithName;
+      saveChartName.focus();
+      return;
+    }
+    const birth = { ...screenBirth(), ...(name ? { name } : {}) };
+    let problem;
+    try {
+      problem = await settingsPage.saveChart(birth, {}, chartBasis);
+    } catch (err) {
+      console.error(err);
+      problem = err.message;
+    }
+    if (problem === null) {
+      saveChartDialog.close();
+      showToast(requiredTranslation('save_chart_saved'), false);
+    } else {
+      // Refused, the settings may have been read again: the next save is made from them.
+      saveChartStatus.textContent = problem;
+      chartBasis = settingsPage.basis();
+    }
+  });
+
+  // The library, from the chart's heading (library.js).
+  const libraryBtn = document.getElementById('library-btn');
+  const libraryDialog = document.getElementById('library-dialog');
+  if (!libraryBtn || !libraryDialog) throw new Error('The library is incomplete.');
+  const library = window.EC_LIBRARY.create({
+    dialog: libraryDialog,
+    button: libraryBtn,
+    translate: requiredTranslation,
+    escape: esc,
+    format: { parseWallClock, date: formatDate, time: formatTime },
+    settings: settingsPage,
+    screenBirth,
+    language: () => currentLanguage,
+    onOpen: (params) => goToChart(params),
+    onSave: () => openSaveChart(),
+    onSettings: () => openSettings(),
+  });
+
+  // A birth added or corrected from Settings: #save?as=mine, #save?as=partner&with=<a
+  // saved chart's id>, or #save?as=correct&chart=<id>. The form says what it saves and
+  // asks for a name; Save keeps the birth, and Cancel goes back to Settings.
+  const SAVE_ROUTE = '#save?';
+  const saveNote = document.getElementById('save-note');
+  const saveNoteText = document.getElementById('save-note-text');
+  const saveCancel = document.getElementById('save-cancel');
+  const saveNameGroup = document.getElementById('save-name-group');
+  const saveNameInput = document.getElementById('save-name');
+  const saveNameStatus = document.getElementById('save-name-status');
+  const genderLegend = form.querySelector('.gender-group legend');
+  if (!saveNote || !saveNoteText || !saveCancel || !saveNameGroup || !saveNameInput || !saveNameStatus || !genderLegend) {
+    throw new Error('Saving a birth is incomplete.');
+  }
+  const readSaveLink = (hash) => {
+    const params = new URLSearchParams(hash.slice(SAVE_ROUTE.length));
+    const as = params.get('as');
+    const wanted = { mine: ['as'], partner: ['as', 'with'], correct: ['as', 'chart'] }[as];
+    if (!wanted) throw linkError('as');
+    for (const key of new Set(params.keys())) {
+      if (!wanted.includes(key) || params.getAll(key).length > 1) throw linkError(key);
+    }
+    const id = (key) => {
+      const value = params.get(key);
+      if (!/^[0-9a-f]{32}$/.test(value ?? '')) throw linkError(key);
+      return value;
+    };
+    return { as, with: as === 'partner' ? id('with') : null, chart: as === 'correct' ? id('chart') : null };
+  };
+  // What the form saves, with the basis of the settings it read; null when it draws.
+  let saving = null;
+  const askToSave = (mode, kept) => {
+    const chartNamed = (id) => {
+      const chart = window.EC_LIBRARY.chartWith(kept, id);
+      if (chart === null) throw new Error(requiredTranslation('save_chart_gone'));
+      return chart;
+    };
+    const correcting = mode.as === 'correct' ? chartNamed(mode.chart) : null;
+    const text = mode.as === 'mine'
+      ? requiredTranslation('save_note_mine')
+      : mode.as === 'partner'
+        ? requiredTranslation('save_note_partner', { name: settingsPage.chartName(chartNamed(mode.with)) })
+        : requiredTranslation('save_note_correct', { name: settingsPage.chartName(correcting) });
+    form.reset();
+    clearResolvedLocation();
+    setFieldError(dateInput, dateStatus, '');
+    setFieldError(timeInput, timeStatus, '');
+    saving = { ...mode, basis: settingsPage.basis(), fold: correcting?.fold ?? null, zi: correcting?.zi ?? ZI_CONVENTIONS[0] };
+    saveNoteText.textContent = text;
+    saveNote.classList.remove('hidden');
+    saveNameGroup.classList.remove('hidden');
+    saveNameInput.value = correcting?.name ?? '';
+    saveNameStatus.textContent = '';
+    // A saved birth needs a gender: the day needs its luck pillars.
+    genderLegend.dataset.i18n = 'save_gender';
+    genderLegend.textContent = t('save_gender');
+    createChartBtn.setAttribute('data-i18n', 'save_create');
+    createChartBtn.textContent = t('save_create');
+    if (correcting !== null) {
+      dateInput.value = correcting.date;
+      timeInput.value = correcting.time;
+      setFormGender(correcting.gender);
+      pickPlace({ ...correcting.place, display: correcting.place.name });
+    }
+    document.title = requiredTranslation('settings_page_title');
+    (correcting === null ? saveNameInput : dateInput).focus();
+  };
+  const stopSaving = () => {
+    saving = null;
+    saveNote.classList.add('hidden');
+    saveNameGroup.classList.add('hidden');
+    saveNameInput.value = '';
+    saveNameStatus.textContent = '';
+    if (genderLegend.dataset.i18n !== 'label_gender') {
+      genderLegend.dataset.i18n = 'label_gender';
+      genderLegend.textContent = t('label_gender');
+    }
+  };
+  const backToSettings = (method) => {
+    stopSaving();
+    history[method](null, '', `${formAddress()}${SETTINGS_ROUTE}`);
+    followAddress();
+  };
+  saveCancel.addEventListener('click', () => backToSettings('replaceState'));
+  // The form's birth, kept as the mode says: null once kept, or why not.
+  const saveBirth = async (request, place) => {
+    const name = saveNameInput.value.trim();
+    const problemWithName = nameProblem(name);
+    if (problemWithName !== null) {
+      saveNameStatus.textContent = problemWithName;
+      saveNameInput.focus();
+      return problemWithName;
+    }
+    if (!request.gender) return requiredTranslation('save_chart_needs_gender');
+    // A corrected birth keeps its Zi-hour convention, and its pass while its day and
+    // time stay as they were.
+    const sameMoment = saving.as === 'correct' && saving.fold !== null;
     const birth = {
       ...(name ? { name } : {}),
       date: request.date,
@@ -1808,28 +1997,41 @@ document.addEventListener('DOMContentLoaded', () => {
         latitude: request.location.latitude,
         longitude: request.location.longitude,
       },
-      fold: request.location.fold ?? null,
+      fold: null,
       gender: request.gender,
-      zi: request.conventions?.zi_convention ?? ZI_CONVENTIONS[0],
+      zi: saving.zi,
     };
-    let problem;
+    if (sameMoment) {
+      const before = window.EC_LIBRARY.chartWith(settingsPage.current(), saving.chart);
+      if (before !== null && before.date === birth.date && before.time === birth.time) birth.fold = saving.fold;
+    }
+    if (saving.as === 'correct') return settingsPage.correctChart(saving.chart, birth, saving.basis);
+    return settingsPage.saveChart(birth, { mine: saving.as === 'mine', coupleWith: saving.with }, saving.basis);
+  };
+
+  // Signed in, the bare address opens your chart; with none marked, the form stays.
+  // The address is replaced, so Back does not come here again.
+  const openMyChart = async () => {
+    const arrival = arrivals;
+    const still = () => arrival === arrivals && location.hash === '' && saving === null && comparingWith === null && !pending;
+    let kept;
     try {
-      problem = await settingsPage.savePartner(birth, partnerBasis);
+      kept = await settingsPage.load(still);
     } catch (err) {
+      if (!still()) return;
       console.error(err);
-      problem = err.message;
+      setFormError(err.message || t('settings_load_error'));
+      return;
     }
-    if (problem === null) {
-      partnerDialog.close();
-      showToast(requiredTranslation('save_partner_saved'), false);
-    } else {
-      // Refused, the settings may have been read again: what a save replaces is said anew,
-      // and the next save is made from them.
-      partnerNameStatus.textContent = problem;
-      partnerBasis = settingsPage.basis();
-      sayReplaces(settingsPage.current());
+    if (!still() || kept.my_chart === null) return;
+    const mine = window.EC_LIBRARY.chartWith(kept, kept.my_chart);
+    if (mine.pillars === null) {
+      setFormError(requiredTranslation('my_chart_problem', { problem: mine.problem }));
+      return;
     }
-  });
+    history.replaceState(null, '', `${formAddress()}${CHART_ROUTE}${window.EC_LIBRARY.chartParams(mine, currentLanguage)}`);
+    followAddress();
+  };
 
   const sameChart = (link) => {
     if (shown === null) return false;
@@ -1887,6 +2089,40 @@ document.addEventListener('DOMContentLoaded', () => {
     compare.hide();
     settingsPage.hide();
     today.hide();
+    if (location.hash.startsWith(SAVE_ROUTE)) {
+      // A birth added or corrected from Settings: the settings are the account's, so a
+      // session that ended asks for a sign-in first.
+      askForChart();
+      leaveChart();
+      let mode;
+      try {
+        mode = readSaveLink(location.hash);
+      } catch (err) {
+        console.error(err);
+        setFormError(err.message);
+        addressForm('replaceState');
+        return;
+      }
+      inputView.classList.add('hidden');
+      let kept;
+      try {
+        const holds = await account.stillSignedIn(() => arrival === arrivals);
+        if (arrival !== arrivals) return;
+        if (!holds) await account.signIn();
+        kept = await settingsPage.load(() => arrival === arrivals);
+        if (arrival !== arrivals) return;
+        inputView.classList.remove('hidden');
+        askToSave(mode, kept);
+      } catch (err) {
+        if (arrival !== arrivals) return;
+        console.error(err);
+        stopSaving();
+        inputView.classList.remove('hidden');
+        setFormError(err.message);
+        addressForm('replaceState');
+      }
+      return;
+    }
     if (location.hash.startsWith(TODAY_ROUTE)) {
       let next;
       try {
@@ -2245,8 +2481,9 @@ document.addEventListener('DOMContentLoaded', () => {
       add(requiredTranslation('view_label'), evolution.textContent, () => evolution.click(), 'workflow');
     }
     const chart = requiredTranslation('palette_chart');
-    (embedded ? [copyTextBtn] : [copyLinkBtn, copyTextBtn, backBtn, newChartBtn, compareBtn, savePartnerBtn])
+    (embedded ? [copyTextBtn] : [copyLinkBtn, copyTextBtn, backBtn, newChartBtn, compareBtn])
       .forEach((button) => add(chart, button.textContent, () => button.click(), window.EC_CONTROLS.icon(button)));
+    if (!embedded) add(chart, requiredTranslation('library_title'), () => library.open(), 'library');
     // The page's own print, whose stylesheet prints the chart and its open topic.
     add(chart, requiredTranslation('print'), () => window.print(), 'printer');
     if (currentTopic() !== null) add(chart, requiredTranslation('panel_close'), closePanelAndReturnFocus, 'x');
@@ -2305,6 +2542,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   applyLanguage();
   if (location.hash) followAddress();
+  else if (!embedded && account.signedIn()) openMyChart();
 });
 
 

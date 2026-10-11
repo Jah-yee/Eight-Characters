@@ -1,8 +1,9 @@
 // Today: what a day, its month, its year and the luck pillar in force bring to the chart
-// on screen, and to a partner's (docs/Standard-Today.md). The API reckons all of it
-// (POST /api/today), with the partner's chart, the place and the schools the account
-// keeps (settings.js). This page draws its answer and computes nothing: the only thing
-// it reads itself is the date on the clock at where you are.
+// on screen, and to its partner's (docs/Standard-Today.md). The API reckons all of it
+// (POST /api/today), with the place and the schools the account keeps (settings.js) and,
+// when the chart on screen is a saved chart in a couple, the other chart of the couple
+// (library.js). This page draws its answer and computes nothing: the only thing it
+// reads itself is the date on the clock at where you are.
 (() => {
   const LAYERS = ['day', 'month', 'year', 'luck'];
   const BANDS = ['strongly_supportive', 'supportive', 'mixed', 'draining', 'strongly_draining'];
@@ -134,10 +135,21 @@
       gender: chart.gender,
       zi: chart.zi,
     });
-    const partnerOf = (kept) => (kept.partner === null || kept.partner.problem !== null ? null : kept.partner);
+    // The other chart of the couple the chart on screen is in, as saved: null when the
+    // chart is not saved or not in a couple.
+    const coupleOf = (kept) => {
+      const saved = window.EC_LIBRARY.savedOf(kept, chartBirth(state.chart));
+      return saved === null ? null : window.EC_LIBRARY.partnerOf(kept, saved.id);
+    };
+    const partnerOf = (kept) => {
+      const other = coupleOf(kept);
+      return other === null || other.problem !== null ? null : other;
+    };
+    // What the API takes of a saved chart: its birth, without the library's id or the
+    // drawn pillars.
     const partnerBirth = (partner) => {
-      const { pillars: drawn, problem, ...birth } = partner;
-      if (problem !== null || drawn === null) throw new Error(t('today_answer_error'));
+      const { id, pillars: drawn, problem, ...birth } = partner;
+      if (typeof id !== 'string' || problem !== null || drawn === null) throw new Error(t('today_answer_error'));
       return birth;
     };
     const partnerName = (partner) => partner.name ?? t('today_partner');
@@ -476,7 +488,7 @@
         }
         const partner = partnerOf(kept);
         if (state.who === 'partner' && partner === null) {
-          instead(t(kept.partner === null ? 'today_partner_gone' : 'today_partner_problem'), [['self', t('today_self')], ['settings', t('settings_open')]]);
+          instead(t(coupleOf(kept) === null ? 'today_partner_gone' : 'today_partner_problem'), [['self', t('today_self')], ['settings', t('settings_open')]]);
           return;
         }
         const response = await fetch('/api/today', {
@@ -518,7 +530,7 @@
           // opened: it is no longer one of the day's topics, and the page says why.
           state = { ...state, topic: null };
           go(address(state), 'replaceState');
-          gone = t(kept.partner === null ? 'today_partner_gone' : 'today_partner_problem');
+          gone = t(coupleOf(kept) === null ? 'today_partner_gone' : 'today_partner_problem');
         }
         answer = reply;
         keepingFocus(draw);
