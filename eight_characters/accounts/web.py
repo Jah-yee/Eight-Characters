@@ -40,6 +40,7 @@ from eight_characters.accounts.person_check import (
     Turnstile,
 )
 from eight_characters.accounts.records import (
+    CHART_LIMIT,
     DEFAULT_SCHOOLS,
     NO_CHOICE,
     Birth,
