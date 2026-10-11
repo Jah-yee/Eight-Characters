@@ -43,6 +43,7 @@ from eight_characters.accounts.store import (
     AccountStore,
     ChartLimit,
     CoupleLimit,
+    DuplicateChart,
     SettingsChanged,
     UnknownChart,
     UnknownCouple,
@@ -93,6 +94,13 @@ PARTNER = Birth(
     gender='male',
     zi='whole_zi_23',
 )
+def born(number: int) -> Birth:
+    """Made-up births, each charting differently: a day of January 1990 and an hour."""
+    return replace(
+        BIRTH, date=f'1990-01-{1 + number % 28:02d}', time=f'{number // 28:02d}:45'
+    )
+
+
 MINE_ID = '1' * 32
 PARTNER_ID = '2' * 32
 COUPLE_ID = '3' * 32
@@ -214,6 +222,14 @@ class TestSettingsRecords(unittest.TestCase):
                 SETTINGS,
                 charts=(SavedChart(MINE_ID, BIRTH), SavedChart(MINE_ID, PARTNER)),
             ),
+            'one birth saved twice, under two names': lambda: replace(
+                SETTINGS,
+                charts=(
+                    SavedChart(MINE_ID, BIRTH),
+                    SavedChart(PARTNER_ID, replace(BIRTH, name='Again', time='08:30:00')),
+                ),
+                couples=(),
+            ),
             'my chart not kept': lambda: replace(SETTINGS, my_chart='4' * 32),
             'a couple of a chart not kept': lambda: replace(
                 SETTINGS, couples=(Couple(COUPLE_ID, (MINE_ID, '4' * 32)),)
@@ -234,7 +250,7 @@ class TestSettingsRecords(unittest.TestCase):
             'more charts than the library holds': lambda: replace(
                 no_settings('2026-10-07T12:00:00Z'),
                 charts=tuple(
-                    SavedChart(f'{n:032x}', BIRTH) for n in range(CHART_LIMIT + 1)
+                    SavedChart(f'{n:032x}', born(n)) for n in range(CHART_LIMIT + 1)
                 ),
             ),
         }.items():
@@ -462,8 +478,7 @@ class TestSettingsStore(StoreCase):
     def test_the_library_keeps_charts_in_the_order_saved(self) -> None:
         _, mine = self.save(BIRTH)
         _, partner = self.save(PARTNER)
-        _, again = self.save(BIRTH)
-        # Each saved chart has an id of its own, the same birth too.
+        _, again = self.save(born(2))
         self.assertEqual(len({mine, partner, again}), 3)
         renamed = replace(PARTNER, name='Renamed')
         self.store.set_my_chart(self.user.id, mine, self.read())
@@ -476,13 +491,100 @@ class TestSettingsStore(StoreCase):
             (
                 SavedChart(mine, BIRTH),
                 SavedChart(partner, renamed),
-                SavedChart(again, BIRTH),
+                SavedChart(again, born(2)),
             ),
         )
         self.assertEqual(kept.my_chart, mine)
         couple = kept.couple_of(partner)
         assert couple is not None
         self.assertEqual(couple.charts, (mine, partner))
+
+    def test_a_birth_is_saved_once(self) -> None:
+        # The chart on screen is matched to the library by its birth, so a birth that
+        # charts the same is one saved chart, whatever its name or place label.
+        _, mine = self.save(BIRTH)
+        _, partner = self.save(PARTNER)
+        self.store.mark_backed_up(self.store.backup_snapshot().through_seq)
+        before = self.store.settings(self.user.id)
+        same = replace(
+            BIRTH,
+            name='Again',
+            time='08:30:00',
+            place=replace(HELSINKI, name='Helsingfors', city='Helsingfors'),
+        )
+        for change in (
+            lambda: self.store.save_chart(self.user.id, same, self.read()),
+            lambda: self.store.update_chart(self.user.id, partner, same, self.read()),
+        ):
+            with self.assertRaises(DuplicateChart):
+                change()
+        self.assertEqual(self.store.settings(self.user.id), before)
+        self.assertEqual(self.store.backup_snapshot().changes, ())
+        # A chart corrected to its own birth again is no duplicate of itself.
+        self.assertEqual(
+            self.store.update_chart(self.user.id, mine, BIRTH, self.read()), before
+        )
+        # Another Zi-hour convention, gender or pass charts differently.
+        for other in (
+            replace(BIRTH, zi='whole_zi_23'),
+            replace(BIRTH, gender='male'),
+            replace(BIRTH, fold=1, date='2021-10-31', time='03:30'),
+        ):
+            with self.subTest(other=other):
+                self.save(other)
+
+    def test_a_new_chart_can_be_mine_or_paired_in_the_same_write(self) -> None:
+        _, partner = self.save(PARTNER)
+        self.store.mark_backed_up(self.store.backup_snapshot().through_seq)
+        kept, mine = self.store.save_chart(
+            self.user.id, BIRTH, self.read(), mine=True, couple_with=partner
+        )
+        assert kept is not None
+        self.assertEqual(kept.my_chart, mine)
+        (couple,) = kept.couples
+        self.assertEqual(couple.charts, (partner, mine))
+        # One write: one change for the backup.
+        self.assertEqual(len(self.store.backup_snapshot().changes), 1)
+        # A pairing that cannot be made saves nothing either.
+        before = self.store.settings(self.user.id)
+        for name, change in {
+            'a partner in a couple already': lambda: self.store.save_chart(
+                self.user.id, born(3), self.read(), couple_with=partner
+            ),
+            'a partner the account does not keep': lambda: self.store.save_chart(
+                self.user.id, born(3), self.read(), couple_with='4' * 32
+            ),
+        }.items():
+            with self.subTest(name), self.assertRaises((CoupleLimit, UnknownChart)):
+                change()
+        self.assertEqual(self.store.settings(self.user.id), before)
+
+    def test_a_new_chart_marked_mine_pairs_with_a_partner_kept_before_charts(
+        self,
+    ) -> None:
+        self._keep_as_before_charts(PARTNER_SETTINGS['partner'])
+        waiting = partner_chart_id(PARTNER_SETTINGS['partner'])
+        kept, mine = self.store.save_chart(self.user.id, BIRTH, self.read(), mine=True)
+        assert kept is not None
+        (couple,) = kept.couples
+        self.assertEqual(couple.charts, (mine, waiting))
+        self.assertIsNone(kept.pending_partner)
+
+    def test_a_rename_keeps_the_birth_and_charts_nothing(self) -> None:
+        # Kept with a time the clocks skip (as a time zone update can leave one), the
+        # chart can still be renamed: a rename does not chart the birth again.
+        skipped = replace(PARTNER, date='2021-03-28', time='03:30', place=HELSINKI)
+        _, chart_id = self.save(skipped)
+        renamed = self.store.rename_chart(self.user.id, chart_id, 'Renamed', self.read())
+        assert renamed is not None
+        self.assertEqual(
+            renamed.charts, (SavedChart(chart_id, replace(skipped, name='Renamed')),)
+        )
+        unnamed = self.store.rename_chart(self.user.id, chart_id, None, self.read())
+        assert unnamed is not None
+        self.assertIsNone(unnamed.charts[0].birth.name)
+        with self.assertRaises(UnknownChart):
+            self.store.rename_chart(self.user.id, '4' * 32, 'Nobody', self.read())
 
     def test_a_removed_chart_leaves_its_couple_and_its_mark(self) -> None:
         _, mine = self.save(BIRTH)
@@ -524,7 +626,7 @@ class TestSettingsStore(StoreCase):
     def test_a_chart_is_in_one_couple_at_most(self) -> None:
         _, first = self.save(BIRTH)
         _, second = self.save(PARTNER)
-        _, third = self.save(replace(PARTNER, name='Third'))
+        _, third = self.save(born(5))
         self.store.add_couple(self.user.id, (first, second), self.read())
         self.store.mark_backed_up(self.store.backup_snapshot().through_seq)
         before = self.store.settings(self.user.id)
@@ -559,8 +661,8 @@ class TestSettingsStore(StoreCase):
         self.assertEqual(self.store.backup_snapshot().changes, ())
 
     def test_the_library_holds_a_limited_number_of_charts(self) -> None:
-        for _ in range(CHART_LIMIT):
-            self.save(BIRTH)
+        for number in range(CHART_LIMIT):
+            self.save(born(number))
         before = self.store.settings(self.user.id)
         with self.assertRaises(ChartLimit):
             self.store.save_chart(self.user.id, BIRTH, self.read())
@@ -618,9 +720,12 @@ class TestSettingsStore(StoreCase):
     def test_a_waiting_partner_already_in_a_couple_is_left_there(self) -> None:
         self._keep_as_before_charts(PARTNER_SETTINGS['partner'])
         waiting = partner_chart_id(PARTNER_SETTINGS['partner'])
-        _, other = self.save(replace(PARTNER, name='Other'))
+        _, other = self.save(born(4))
         _, mine = self.save(BIRTH)
-        self.store.add_couple(self.user.id, (other, waiting), self.read())
+        paired = self.store.add_couple(self.user.id, (other, waiting), self.read())
+        assert paired is not None
+        # Paired by hand, the partner waits no longer.
+        self.assertIsNone(paired.pending_partner)
         marked = self.store.set_my_chart(self.user.id, mine, self.read())
         assert marked is not None
         (couple,) = marked.couples
@@ -899,8 +1004,9 @@ class TestSettingsApi(unittest.TestCase):
     def writes(self, chart: str, couple: str) -> list[tuple[str, str, dict[str, Any]]]:
         """Every write the settings API takes, naming a chart and a couple."""
         return [
-            ('POST', '/api/account/charts', _birth_json(PARTNER, self.key)),
-            ('PUT', f'/api/account/charts/{chart}', _birth_json(PARTNER, self.key)),
+            ('POST', '/api/account/charts', _birth_json(born(6), self.key)),
+            ('PUT', f'/api/account/charts/{chart}', _birth_json(born(7), self.key)),
+            ('PUT', f'/api/account/charts/{chart}/name', {'key': self.key, 'name': 'B'}),
             ('PUT', '/api/account/my-chart', {'key': self.key, 'chart': chart}),
             ('DELETE', '/api/account/my-chart', {'key': self.key}),
             (
@@ -988,14 +1094,16 @@ class TestSettingsApi(unittest.TestCase):
                 self.assertEqual(chart['name'], birth.name)
                 self.assertEqual(chart['zi'], birth.zi)
                 self.assertEqual(chart['place']['name'], place.name)
-        # The Zi-hour convention moves a birth late in the evening to the next day.
-        chart_id = self.save(replace(late, zi='split_midnight'))
-        split = self.client.get('/api/account/settings').json()['charts'][-1]
-        whole = self.write(
-            'PUT', f'/api/account/charts/{chart_id}', _birth_json(late, self.key)
-        ).json()['charts'][-1]
-        self.assertEqual((split['id'], whole['id']), (chart_id, chart_id))
-        self.assertNotEqual(split['pillars']['day'], whole['pillars']['day'])
+        # The Zi-hour convention moves a birth late in the evening to the next day: the
+        # same birth with the other convention is another chart.
+        self.save(replace(late, zi='split_midnight'))
+        charts = self.client.get('/api/account/settings').json()['charts']
+        days = {
+            chart['zi']: chart['pillars']['day']
+            for chart in charts
+            if chart['date'] == late.date
+        }
+        self.assertNotEqual(days['split_midnight'], days['whole_zi_23'])
 
     def test_a_birth_is_checked_by_the_first_charts_rules(self) -> None:
         body = _birth_json(BIRTH, self.key)
@@ -1086,7 +1194,7 @@ class TestSettingsApi(unittest.TestCase):
     def test_what_the_library_cannot_do_is_refused(self) -> None:
         first = self.save(BIRTH)
         second = self.save(PARTNER)
-        third = self.save(replace(PARTNER, name='Third'))
+        third = self.save(born(5))
         self.write(
             'POST', '/api/account/couples', {'key': self.key, 'charts': [first, second]}
         )
@@ -1107,13 +1215,63 @@ class TestSettingsApi(unittest.TestCase):
                 {'key': self.key, 'charts': [third, unknown]},
             ),
             (404, 'DELETE', f'/api/account/couples/{unknown}', {'key': self.key}),
-            # A chart is in one couple at most.
+            # A chart is in one couple at most: refused with 400, as a 409 says
+            # another account is signed in now.
             (
-                409,
+                400,
                 'POST',
                 '/api/account/couples',
                 {'key': self.key, 'charts': [third, first]},
             ),
+            (
+                400,
+                'POST',
+                '/api/account/charts',
+                {**_birth_json(born(8), self.key), 'couple_with': first},
+            ),
+            # A birth is saved once.
+            (
+                400,
+                'POST',
+                '/api/account/charts',
+                _birth_json(replace(BIRTH, name='Again'), self.key),
+            ),
+            (
+                400,
+                'PUT',
+                f'/api/account/charts/{third}',
+                _birth_json(PARTNER, self.key),
+            ),
+            # Ids are 32 lowercase hex digits.
+            (400, 'PUT', '/api/account/charts/x', _birth_json(born(9), self.key)),
+            (400, 'DELETE', f'/api/account/charts/{third.upper()}', {'key': self.key}),
+            (400, 'PUT', '/api/account/my-chart', {'key': self.key, 'chart': 'x'}),
+            (
+                400,
+                'POST',
+                '/api/account/couples',
+                {'key': self.key, 'charts': [third, 'x']},
+            ),
+            (
+                400,
+                'POST',
+                '/api/account/charts',
+                {**_birth_json(born(9), self.key), 'couple_with': 'x'},
+            ),
+            # A name is one line of at most 80 characters.
+            (
+                400,
+                'PUT',
+                f'/api/account/charts/{third}/name',
+                {'key': self.key, 'name': 'two\nlines'},
+            ),
+            (
+                400,
+                'PUT',
+                f'/api/account/charts/{third}/name',
+                {'key': self.key, 'name': 'x' * 81},
+            ),
+            (404, 'PUT', f'/api/account/charts/{unknown}/name', {'key': self.key, 'name': 'A'}),
             # A couple is two charts.
             (
                 400,
@@ -1132,13 +1290,55 @@ class TestSettingsApi(unittest.TestCase):
         self.assertEqual(self.client.get('/api/account/settings').json(), before)
 
     def test_a_full_library_saves_no_more(self) -> None:
-        for _ in range(CHART_LIMIT):
-            self.accounts.store.save_chart(self.user.id, BIRTH, self.read())
+        for number in range(CHART_LIMIT):
+            self.accounts.store.save_chart(self.user.id, born(number), self.read())
         reply = self.write('POST', '/api/account/charts', _birth_json(BIRTH, self.key))
-        self.assertEqual(reply.status_code, 409, reply.text)
+        self.assertEqual(reply.status_code, 400, reply.text)
         self.assertEqual(
             reply.json()['detail'], f'An account keeps at most {CHART_LIMIT} charts.'
         )
+
+    def test_a_new_birth_is_saved_as_mine_or_paired_at_once(self) -> None:
+        partner = self.save(PARTNER)
+        mine = self.write(
+            'POST',
+            '/api/account/charts',
+            {**_birth_json(BIRTH, self.key), 'mine': True, 'couple_with': partner},
+        )
+        self.assertEqual(mine.status_code, 201, mine.text)
+        settings = mine.json()
+        self.assertEqual(settings['my_chart'], settings['saved'])
+        (couple,) = settings['couples']
+        self.assertEqual(couple['charts'], [partner, settings['saved']])
+
+    def test_a_chart_is_renamed_without_its_birth(self) -> None:
+        chart_id = self.save(PARTNER)
+        renamed = self.write(
+            'PUT', f'/api/account/charts/{chart_id}/name', {'key': self.key, 'name': 'Ö'}
+        )
+        self.assertEqual(renamed.status_code, 200, renamed.text)
+        (chart,) = renamed.json()['charts']
+        self.assertEqual((chart['id'], chart['name']), (chart_id, 'Ö'))
+        self.assertEqual((chart['date'], chart['time']), (PARTNER.date, PARTNER.time))
+        unnamed = self.write(
+            'PUT', f'/api/account/charts/{chart_id}/name', {'key': self.key, 'name': None}
+        )
+        self.assertIsNone(unnamed.json()['charts'][0]['name'])
+
+    def test_no_cache_keeps_what_the_account_api_answers(self) -> None:
+        # Saved charts are people's births: a shared or browser cache keeps no copy.
+        self.save(BIRTH)
+        for reply in (
+            self.client.get('/api/account/settings'),
+            self.write(
+                'PUT', '/api/account/place', {'key': self.key, 'place': _place_json(LISBON)}
+            ),
+            self.client.post('/api/account/export', json={'key': self.key}),
+            self.client.get('/api/account'),
+        ):
+            with self.subTest(path=reply.request.url.path):
+                self.assertEqual(reply.status_code, 200, reply.text)
+                self.assertEqual(reply.headers['cache-control'], 'no-store')
 
     def test_where_you_are_is_kept_and_forgotten(self) -> None:
         kept = self.write(

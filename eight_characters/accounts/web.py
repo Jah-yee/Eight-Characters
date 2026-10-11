@@ -6,6 +6,7 @@ of what is wrong. Requests that change an account must come from the site's own
 origin, and the session lives in an HttpOnly cookie the page's scripts cannot read.
 """
 
+import copy
 import hashlib
 import hmac
 import logging
@@ -22,6 +23,7 @@ from urllib.parse import urlsplit
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import Path as PathPart
 from pydantic import BaseModel, ConfigDict, Field
 from typing_extensions import TypedDict
 
@@ -49,6 +51,7 @@ from eight_characters.accounts.records import (
     Settings,
     User,
     ZiConvention,
+    check_name,
     normalize_email,
     place_value,
     timestamp,
@@ -67,6 +70,7 @@ from eight_characters.accounts.store import (
     AccountStore,
     ChartLimit,
     CoupleLimit,
+    DuplicateChart,
     SettingsChanged,
     UnknownChart,
     UnknownCouple,
@@ -567,13 +571,34 @@ class SettingsRequest(BaseModel):
     updated_at: str | None
 
 
+# A saved chart's or a couple's id: 32 lowercase hex digits (records.new_id).
+ID_PATTERN: Final = r'^[0-9a-f]{32}$'
+ChartId = Annotated[str, PathPart(pattern=ID_PATTERN)]
+
+
+class NewChartRequest(BirthRequest):
+    # Saving a birth may, in the same write, mark it as the person's own, or pair it
+    # with one of the saved charts: a failure then leaves neither.
+    mine: bool = False
+    couple_with: str | None = Field(default=None, pattern=ID_PATTERN)
+
+
+class NameRequest(BaseModel):
+    # A saved chart's new name, or null to leave it unnamed.
+    model_config = ConfigDict(extra='forbid', strict=True)
+
+    key: str
+    updated_at: str | None
+    name: str | None
+
+
 class MyChartRequest(BaseModel):
     # Which saved chart is the person's own, by its id.
     model_config = ConfigDict(extra='forbid', strict=True)
 
     key: str
     updated_at: str | None
-    chart: str
+    chart: str = Field(pattern=ID_PATTERN)
 
 
 class CoupleRequest(BaseModel):
@@ -582,7 +607,9 @@ class CoupleRequest(BaseModel):
 
     key: str
     updated_at: str | None
-    charts: list[str] = Field(min_length=2, max_length=2)
+    charts: list[Annotated[str, Field(pattern=ID_PATTERN)]] = Field(
+        min_length=2, max_length=2
+    )
 
 
 class SchoolsRequest(BaseModel):
@@ -646,7 +673,12 @@ class SavedReply(SettingsView):
     saved: str
 
 
-router = APIRouter(prefix='/api/account')
+def _not_cached(response: Response) -> None:
+    """The account API answers with the account's own data: no cache may keep it."""
+    response.headers['Cache-Control'] = 'no-store'
+
+
+router = APIRouter(prefix='/api/account', dependencies=[Depends(_not_cached)])
 
 
 def _named(user: User, key: str) -> None:
@@ -873,15 +905,30 @@ def charted(birth: Birth) -> dict[PillarName, ChartPillar]:
     return chart_birth(birth).chart()
 
 
-def _chart_view(birth: Birth) -> ChartView:
-    pillars: dict[PillarName, ChartPillar] | None = None
-    problem: str | None = None
+# How many saved births' charts a process keeps: every answer about the settings
+# shows each saved chart's pillars, at about 25 ms of engine time each.
+CHARTED_KEPT: Final = 1024
+
+
+@lru_cache(maxsize=CHARTED_KEPT)
+def _charted_or_problem(
+    birth: Birth,
+) -> tuple[dict[PillarName, ChartPillar] | None, str | None]:
+    """A saved birth's four pillars, or why the engine no longer charts it. The engine
+    gives a birth the same chart every time under the pinned time zone data, so it is
+    charted once per process."""
     try:
-        pillars = charted(birth)
+        return charted(birth), None
     except TodayInputError as exc:
         # Shown with the chart, so the page can ask for its time again; Today
         # refuses the chart with the same reason.
-        problem = str(exc)
+        return None, str(exc)
+
+
+def _chart_view(birth: Birth) -> ChartView:
+    kept, problem = _charted_or_problem(birth)
+    # A copy: what the cache keeps is never handed out to be changed.
+    pillars = copy.deepcopy(kept)
     return {
         'name': birth.name,
         'date': birth.date,
@@ -959,8 +1006,9 @@ def _store_change(change: Callable[[], _Changed]) -> _Changed:
         raise HTTPException(status_code=412, detail=SETTINGS_CHANGED) from exc
     except (UnknownChart, UnknownCouple) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except (ChartLimit, CoupleLimit) as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (ChartLimit, CoupleLimit, DuplicateChart) as exc:
+        # Not 409: the page reads a 409 as another account signed in meanwhile.
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def _changed(user: User, change: Callable[[], Settings | None]) -> SettingsView:
@@ -979,14 +1027,15 @@ def read_settings(
 
 @router.post('/charts', status_code=201)
 def save_chart(
-    payload: BirthRequest,
+    payload: NewChartRequest,
     request: Request,
     current: SessionDependency,
     accounts: AccountsDependency,
 ) -> SavedReply:
     """Keeps a chart in your library, after the last, and says the id it is kept
-    under. It is checked as a first chart with its time is, and charted before it is
-    kept."""
+    under; in the same write, it can become your own chart, or be paired with one of
+    your saved charts. It is checked as a first chart with its time is, and charted
+    before it is kept. A birth is saved once."""
     _same_origin(request, accounts)
     user = _signed_in(current).user
     _named(user, payload.key)
@@ -995,14 +1044,20 @@ def save_chart(
     except (RecordError, FirstChartInputError, TodayInputError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     settings, chart_id = _store_change(
-        lambda: accounts.store.save_chart(user.id, birth, payload.updated_at)
+        lambda: accounts.store.save_chart(
+            user.id,
+            birth,
+            payload.updated_at,
+            mine=payload.mine,
+            couple_with=payload.couple_with,
+        )
     )
     return SavedReply(**settings_view(user, settings), saved=chart_id)
 
 
 @router.put('/charts/{chart_id}')
 def change_chart(
-    chart_id: str,
+    chart_id: ChartId,
     payload: BirthRequest,
     request: Request,
     current: SessionDependency,
@@ -1025,9 +1080,33 @@ def change_chart(
     )
 
 
+@router.put('/charts/{chart_id}/name')
+def rename_chart(
+    chart_id: ChartId,
+    payload: NameRequest,
+    request: Request,
+    current: SessionDependency,
+    accounts: AccountsDependency,
+) -> SettingsView:
+    """Renames a saved chart, or leaves it unnamed. Its birth is not charted again."""
+    _same_origin(request, accounts)
+    user = _signed_in(current).user
+    _named(user, payload.key)
+    try:
+        check_name(payload.name)
+    except RecordError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _changed(
+        user,
+        lambda: accounts.store.rename_chart(
+            user.id, chart_id, payload.name, payload.updated_at
+        ),
+    )
+
+
 @router.delete('/charts/{chart_id}')
 def delete_chart(
-    chart_id: str,
+    chart_id: ChartId,
     payload: SettingsRequest,
     request: Request,
     current: SessionDependency,
@@ -1099,7 +1178,7 @@ def pair_charts(
 
 @router.delete('/couples/{couple_id}')
 def part_couple(
-    couple_id: str,
+    couple_id: ChartId,
     payload: SettingsRequest,
     request: Request,
     current: SessionDependency,

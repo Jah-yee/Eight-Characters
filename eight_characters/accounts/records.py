@@ -215,6 +215,13 @@ class User:
             raise RecordError('A user cannot change before it was made.')
 
 
+def check_name(name: str | None) -> None:
+    """A chart's name: one line of printable text, at most NAME_MAX_LENGTH
+    characters, or none."""
+    if name is not None:
+        _check_text('A name', name, NAME_MAX_LENGTH)
+
+
 @dataclass(frozen=True)
 class Place:
     """A place as the place search gives it: its full name, its city (as a chart's
@@ -258,8 +265,7 @@ class Birth:
     zi: ZiConvention
 
     def __post_init__(self) -> None:
-        if self.name is not None:
-            _check_text('A name', self.name, NAME_MAX_LENGTH)
+        check_name(self.name)
         if not is_zi(self.zi):
             raise RecordError(f'Unknown Zi-hour convention: {self.zi!r}.')
         if self.fold is not None and (
@@ -272,6 +278,23 @@ class Birth:
             self.first_birth()
         except first_chart.FirstChartInputError as exc:
             raise RecordError(str(exc)) from exc
+
+    def chart_key(self) -> tuple[object, ...]:
+        """What the chart is drawn from: the day, the clock time to the second, its
+        pass, the place on the globe and its zone, the gender and the Zi-hour
+        convention. Two births with the same key are one chart, whatever their names
+        or place labels."""
+        clock = self.time if len(self.time) == len('00:00:00') else f'{self.time}:00'
+        return (
+            self.date,
+            clock,
+            self.fold,
+            self.place.timezone,
+            self.place.latitude,
+            self.place.longitude,
+            self.gender,
+            self.zi,
+        )
 
     def first_birth(self) -> first_chart.FirstBirth:
         """The birth as the first chart takes it, with its time and place."""
@@ -393,6 +416,9 @@ class Settings:
         ids = [chart.id for chart in self.charts]
         if len(set(ids)) != len(ids):
             raise RecordError('Two saved charts share an id.')
+        keys = [chart.birth.chart_key() for chart in self.charts]
+        if len(set(keys)) != len(keys):
+            raise RecordError('The same birth is saved twice.')
         if len(ids) > CHART_LIMIT:
             raise RecordError(f'An account keeps at most {CHART_LIMIT} charts.')
         if self.my_chart is not None and self.my_chart not in ids:
@@ -415,6 +441,13 @@ class Settings:
 
     def chart(self, chart_id: str) -> SavedChart | None:
         return next((chart for chart in self.charts if chart.id == chart_id), None)
+
+    def chart_of(self, birth: Birth) -> SavedChart | None:
+        """The saved chart drawn from the same birth, if there is one."""
+        key = birth.chart_key()
+        return next(
+            (chart for chart in self.charts if chart.birth.chart_key() == key), None
+        )
 
     def couple_of(self, chart_id: str) -> Couple | None:
         return next(
