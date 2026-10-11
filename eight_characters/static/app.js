@@ -2008,8 +2008,10 @@ document.addEventListener('DOMContentLoaded', () => {
       zi: mode.zi,
     };
     if (sameMoment) {
+      // The same moment, to the second, written with or without its seconds.
+      const clock = (time) => (time.length === 5 ? `${time}:00` : time);
       const before = window.EC_LIBRARY.chartWith(settingsPage.current(), mode.chart);
-      if (before !== null && before.date === birth.date && before.time === birth.time) birth.fold = mode.fold;
+      if (before !== null && before.date === birth.date && clock(before.time) === clock(birth.time)) birth.fold = mode.fold;
     }
     if (mode.as === 'correct') return settingsPage.correctChart(mode.chart, birth, mode.basis);
     return settingsPage.saveChart(birth, { mine: mode.as === 'mine', coupleWith: mode.with }, mode.basis);
