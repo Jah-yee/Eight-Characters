@@ -175,13 +175,14 @@ def full_combination(branch: str, branches: Sequence[str]) -> str | None:
 
 
 def _bound(shown: Sequence[str]) -> set[int]:
-    """Indexes of shown stems combined (五合) with the stem beside them, year–month or
-    month–hour: such a stem is taken away (戊癸作合，财印两失; 壬财丁印，二者相合)."""
-    bound: set[int] = set()
-    for index in range(len(shown) - 1):
-        if frozenset((shown[index], shown[index + 1])) in COMBINING:
-            bound |= {index, index + 1}
-    return bound
+    """Indexes of the year and month stems when the two combine (五合): the pair is
+    taken away (戊癸作合，财印两失; 壬财丁印，二者相合). The month and hour stems have
+    the Day Master between them, and a combination across it does not take (论十干合而
+    不合: 隔于有所间); the Day Master's own combination takes nothing away (本身之合，
+    不为合去), so the text's 金丞相 (庚戌 戊子 癸酉 癸亥) keeps its Officer."""
+    if len(shown) > 1 and frozenset((shown[0], shown[1])) in COMBINING:
+        return {0, 1}
+    return set()
 
 
 def _keeper(shown: Sequence[str], main: str, new: str) -> str | None:
@@ -211,8 +212,8 @@ def name_structure(pillars: Mapping[str, tuple[str, str]]) -> Naming:
        with 禄劫用伤食.
     2. A mixed month (辰戌丑未) is named by what shows of it: 透干会取其清者用之. A
        hidden stem shows when a stem of its element does (甲透未库), and the shown
-       stem's own god names the structure (辰中暗煞，壬以透之); two shown stems that
-       combine side by side are taken away (戊癸作合，财印两失). Of what is left, an
+       stem's own god names the structure (辰中暗煞，壬以透之); the year and month stems
+       are taken away when they combine (戊癸作合，财印两失). Of what is left, an
        Officer or Killings shown by the month's own stem comes first (甲生丑月，辛透为官
        ……而又透己财以生官), else the first in the month's hidden-stem order; an Eating
        God so chosen gives way to Killings that show (煞逢食制，则煞为用，食为相). With
@@ -418,8 +419,8 @@ class Facts:
 
     @property
     def free_gods(self) -> Gods:
-        """The gods of the shown stems no stem beside them combines away: such a pair is
-        taken away (戊癸作合，财印两失; 壬财丁印，二者相合，仍以孤官无辅论)."""
+        """The gods of the shown stems not combined away: a combining year and month
+        pair is taken away (戊癸作合，财印两失; 壬财丁印，二者相合，仍以孤官无辅论)."""
         bound = _bound(self.shown)
         return tuple(
             god for index, god in enumerate(self.shown_gods) if index not in bound

@@ -293,7 +293,7 @@ CASES: Final[tuple[tuple[str, Facts, str, dict[str, Verdict]], ...]] = (
     ),
     (
         'direct_officer',
-        facts('甲', '丙辛壬'),
+        facts('甲', '丁辛壬'),
         'output_and_resource',
         {'officer': 'favourable', 'owl': 'favourable', 'iwealth': 'strongly_against'},
     ),
@@ -381,7 +381,7 @@ CASES: Final[tuple[tuple[str, Facts, str, dict[str, Verdict]], ...]] = (
     ),
     (
         'wealth',
-        facts('甲', '辛丙壬'),
+        facts('甲', '丙壬辛'),
         'officer',
         {'killings': 'favourable', 'hurting': 'idle'},
     ),
