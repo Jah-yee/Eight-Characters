@@ -738,6 +738,18 @@ for (const profile of profiles) {
       await page.mouse.up();
       await page.waitForTimeout(100);
       assert.equal(await part(page, 'day'), stay);
+      // Out off the days and back to where it started, let go on the neighbour: the press
+      // went more than 10px, so it picks nothing.
+      const daysBox = await page.locator('#today-days').boundingBox();
+      const outside = daysBox.y + daysBox.height + 40;
+      assert.ok(outside < page.viewportSize().height, `below the days, in the window: ${outside}`);
+      await page.mouse.move(side.x + side.width / 2, side.y + side.height * 0.5);
+      await page.mouse.down();
+      await page.mouse.move(side.x + side.width / 2, outside);
+      await page.mouse.move(side.x + side.width / 2, side.y + side.height * 0.5);
+      await page.mouse.up();
+      await page.waitForTimeout(100);
+      assert.equal(await part(page, 'day'), stay);
       // Let go off the days before its drag began: the next drag still moves them.
       const area = await page.locator('#today-days').boundingBox();
       await page.mouse.move(x, y);

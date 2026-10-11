@@ -962,7 +962,9 @@
         width, drags: state !== null && daysRun !== null && width > 0 && event.clientX >= 24,
       };
     });
-    daysTrack.addEventListener('pointermove', (event) => {
+    // Followed wherever it goes, off the days too: a press that went out more than 10px
+    // and came back is no press either.
+    window.addEventListener('pointermove', (event) => {
       if (drag === null || event.pointerId !== drag.id || drag.vertical) return;
       const dx = event.clientX - drag.x;
       if (!drag.moving) {
