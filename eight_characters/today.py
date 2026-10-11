@@ -19,7 +19,13 @@ from eight_characters import first_chart
 from eight_characters.accounts.records import Birth, Language, Place, Schools
 from eight_characters.canon import load_canon
 from eight_characters.conventions import ConventionSettings
-from eight_characters.data import BRANCHES, STEMS, ElementName
+from eight_characters.data import (
+    BRANCHES,
+    HEXAGRAM_LINES,
+    STEMS,
+    TRIGRAM_LINES,
+    ElementName,
+)
 from eight_characters.engine import (
     PillarsAt,
     compute_engine_payload,
@@ -336,10 +342,49 @@ class Relationship(Interaction):
     line: str | None
 
 
+# A pillar as Today draws it on Standard mode's cards: the first chart's view of its
+# stem and branch, each with the lines its card draws, top first ('L' a whole line,
+# 'B' a broken one): the stem's trigram and the branch's hexagram.
+class CardStem(first_chart.Stem):
+    lines: list[str]
+
+
+class CardBranch(first_chart.Branch):
+    lines: list[str]
+
+
+class CardPillar(TypedDict):
+    name: str
+    stem: CardStem
+    branch: CardBranch
+
+
+def _card(pillar: first_chart.ChartPillar) -> CardPillar:
+    stem, branch = pillar['stem'], pillar['branch']
+    return {
+        'name': pillar['name'],
+        'stem': {
+            'chinese': stem['chinese'],
+            'pinyin': stem['pinyin'],
+            'element': stem['element'],
+            'polarity': stem['polarity'],
+            'lines': list(TRIGRAM_LINES[STEMS[stem['chinese']]['trigram']]),
+        },
+        'branch': {
+            'chinese': branch['chinese'],
+            'pinyin': branch['pinyin'],
+            'sign': branch['sign'],
+            'element': branch['element'],
+            'polarity': branch['polarity'],
+            'lines': list(HEXAGRAM_LINES[BRANCHES[branch['chinese']]['hexagram']]),
+        },
+    }
+
+
 class Layer(TypedDict):
     layer: LayerName
     position: str
-    pillar: first_chart.ChartPillar
+    pillar: CardPillar
     ten_gods: list[TenGodAt]
     pull: Pull
     relationships: list[Relationship]
@@ -443,7 +488,7 @@ class RunDay(TypedDict):
     date: str
     # Days from the date asked for.
     offset: int
-    pillar: first_chart.ChartPillar
+    pillar: CardPillar
     score: float
     band: str
     relationships: list[Interaction]
@@ -517,6 +562,8 @@ class TodayAnswer(TypedDict):
     schools: dict[str, str]
     engine: dict[str, Any]
     changes: list[first_chart.PillarChange]
+    # The four pillars of the chart read: the partner's when `chart` is `partner`.
+    natal: dict[first_chart.PillarName, CardPillar]
     season: Season
     favourable: Favourable
     layers: dict[LayerName, Layer | None]
@@ -547,7 +594,7 @@ def _layer(
     view: Layer = {
         'layer': layer,
         'position': POSITIONS[layer],
-        'pillar': first_chart.pillar_view(_label(layer), pair[0], pair[1]),
+        'pillar': _card(first_chart.pillar_view(_label(layer), pair[0], pair[1])),
         'ten_gods': _ten_gods(natal.day_master, pair[0], pair[1]),
         'pull': pull(
             pair[0],
@@ -604,7 +651,7 @@ def _run(
             {
                 'date': other.isoformat(),
                 'offset': offset,
-                'pillar': first_chart.pillar_view('Day', pair[0], pair[1]),
+                'pillar': _card(first_chart.pillar_view('Day', pair[0], pair[1])),
                 'score': found['score'],
                 'band': found['band'],
                 'relationships': detect_luck_interactions(
@@ -850,6 +897,7 @@ def build_today(
         },
         'engine': first['engine'],
         'changes': first['changes'],
+        'natal': {name: _card(pillar) for name, pillar in natal.chart().items()},
         'season': season,
         'favourable': favourable,
         'layers': layers,

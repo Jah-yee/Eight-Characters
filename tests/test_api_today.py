@@ -9,6 +9,7 @@ from typing import Any, ClassVar
 from fastapi.testclient import TestClient
 
 from eight_characters.accounts.web import Accounts, account_key
+from eight_characters.data import build_branch_data, build_stem_data
 from eight_characters.engine import pillars_at
 from eight_characters.sexagenary import BRANCHES as BRANCH_CHARS
 from eight_characters.time_convert import BirthInput
@@ -266,9 +267,63 @@ class TestToday(unittest.TestCase):
         for layer in ('day', 'month', 'year'):
             with self.subTest(layer=layer):
                 shown = self.english['layers'][layer]['pillar']
-                self.assertEqual(shown['stem'], first['pillars'][layer]['stem'])
-                self.assertEqual(shown['branch'], first['pillars'][layer]['branch'])
+                for part in ('stem', 'branch'):
+                    # The first chart's view, and the lines of Today's card.
+                    self.assertEqual(
+                        {k: v for k, v in shown[part].items() if k != 'lines'},
+                        first['pillars'][layer][part],
+                    )
         self.assertEqual(self.english['changes'], first['changes'])
+
+    def test_the_chart_reads_its_own_four_pillars(self) -> None:
+        # The chart read, as /api/four_pillars charts its birth: the partner's with
+        # chart: partner.
+        as_partner = self.client.post(
+            '/api/today', json={**BODY, 'chart': 'partner'}
+        ).json()
+        for answer, birth in ((self.english, CHART), (as_partner, PARTNER)):
+            place = birth['place']
+            four = self.client.post(
+                '/api/four_pillars',
+                json={
+                    'date': birth['date'],
+                    'time': birth['time'],
+                    'location': {
+                        'timezone': place['timezone'],
+                        'latitude': place['latitude'],
+                        'longitude': place['longitude'],
+                    },
+                },
+            ).json()['four_pillars']
+            natal = answer['natal']
+            with self.subTest(chart=answer['chart']):
+                self.assertEqual(list(natal), ['year', 'month', 'day', 'hour'])
+                for name, pillar in natal.items():
+                    charted = four[name]
+                    self.assertEqual(
+                        (pillar['stem']['chinese'], pillar['branch']['chinese']),
+                        (charted['stem']['chinese'], charted['branch']['chinese']),
+                    )
+
+    def test_every_pillar_has_its_cards_lines(self) -> None:
+        # The lines Standard mode's card draws: the stem's trigram and the branch's
+        # hexagram, top first.
+        answer = self.english
+        pillars = [layer['pillar'] for layer in answer['layers'].values() if layer]
+        pillars += [day['pillar'] for day in answer['run']]
+        pillars += list(answer['natal'].values())
+        luck = answer['marriage']['partner']['luck']
+        if luck is not None:
+            pillars.append(luck['pillar'])
+        for pillar in pillars:
+            stem, branch = pillar['stem'], pillar['branch']
+            with self.subTest(pillar=stem['chinese'] + branch['chinese']):
+                trigram = build_stem_data(stem['chinese'])['lines']
+                hexagram = build_branch_data(branch['chinese'])['lines']
+                self.assertEqual(stem['lines'], trigram)
+                self.assertEqual(branch['lines'], hexagram)
+        # 甲 Jia is ☳ Zhen, a whole line under two broken ones.
+        self.assertEqual(build_stem_data('甲')['lines'], ['B', 'B', 'L'])
 
     def test_the_run_is_seven_days_back_and_fourteen_ahead(self) -> None:
         run = self.english['run']
