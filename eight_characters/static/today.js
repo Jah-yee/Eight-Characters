@@ -934,10 +934,12 @@
       if (event.button !== 0) return;
       // Every press is followed, so that one that went more than 10px opens nothing; it
       // drags only while a run is drawn (not while another reading's is on its way), and
-      // not from the screen's left edge.
+      // not from the screen's left edge. A day is as wide as its box is laid out, before
+      // the scale of a neighbour or of a slide under way.
+      const width = daysTrack.querySelector('.today-day')?.offsetWidth ?? 0;
       drag = {
         id: event.pointerId, x: event.clientX, y: event.clientY, moving: false, still: true, vertical: false,
-        drags: state !== null && daysRun !== null && event.clientX >= 24,
+        width, drags: state !== null && daysRun !== null && width > 0 && event.clientX >= 24,
       };
     });
     daysTrack.addEventListener('pointermove', (event) => {
@@ -960,19 +962,22 @@
     });
     daysTrack.addEventListener('pointerup', (event) => {
       if (drag === null || event.pointerId !== drag.id) return;
-      const { moving, still } = drag;
+      const { moving, still, width } = drag;
       const dx = event.clientX - drag.x;
       dropDrag();
       if (!still) swallowing = true;
-      if (!moving || Math.abs(dx) < DRAG || state === null) return;
-      const width = dayNodes.get(state.day)?.getBoundingClientRect().width || 1;
+      // The run went while it was dragged (another reading shown, or the day refused):
+      // the drag moves nothing.
+      if (!moving || Math.abs(dx) < DRAG || state === null || daysRun === null) return;
       const by = Math.max(1, Math.round(Math.abs(dx) / width)) * (dx < 0 ? 1 : -1);
       const day = stepped(by);
       if (day !== state.day) move({ day });
     });
     for (const type of ['pointercancel', 'lostpointercapture']) {
       daysTrack.addEventListener(type, (event) => {
-        if (drag !== null && event.pointerId === drag.id) dropDrag();
+        if (drag === null || event.pointerId !== drag.id) return;
+        if (!drag.still) swallowing = true;
+        dropDrag();
       });
     }
     // A pointer let go anywhere is no longer down; let go off the days (a mouse beside

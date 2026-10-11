@@ -756,6 +756,58 @@ for (const profile of profiles) {
       await page.locator('.today-day[data-place="1"]').click();
       await shown(page);
       assert.equal(await part(page, 'day'), run[at + 3].date);
+      // A drag on a neighbour whose capture is lost, let go on that neighbour: no pick.
+      const near = await page.locator('.today-day[data-place="1"]').boundingBox();
+      const nx = near.x + Math.min(20, near.width / 4);
+      const ny = near.y + near.height / 2;
+      await page.mouse.move(nx, ny);
+      await page.mouse.down();
+      for (const step of [15, 30, 45]) await page.mouse.move(nx + step, ny + 2);
+      assert.equal(await page.locator('#today-days').getAttribute('class'), 'today-days is-dragging');
+      await page.evaluate(() => document.querySelector('.today-days-track').releasePointerCapture(1));
+      await page.mouse.up();
+      await page.waitForTimeout(100);
+      assert.equal(await part(page, 'day'), run[at + 3].date);
+    });
+
+    check('a drag while the day shown is past the run drawn steps by the days it went, in calendar days', async (page) => {
+      await page.clock.setFixedTime(NOW);
+      const { answers } = await recordToday(page);
+      await page.goto(new URL('/', process.env.EC_BASE_URL).href);
+      await setSettings(page);
+      await page.goto(new URL(todayLink(), process.env.EC_BASE_URL).href);
+      await shown(page);
+      const last = answers.at(-1).payload.run.at(-1).date;
+      // Every answer asked for from here is held back: the run drawn stays this one.
+      let release;
+      const released = new Promise((resolve) => { release = resolve; });
+      await page.route('**/api/today', async (route) => {
+        await released;
+        await route.fallback();
+      });
+      const calendarDay = (day, by) => {
+        const next = new Date(`${day}T00:00:00Z`);
+        next.setUTCDate(next.getUTCDate() + by);
+        return next.toISOString().slice(0, 10);
+      };
+      await page.locator('#today-days').focus();
+      await page.keyboard.press('End');
+      await page.keyboard.press(']');
+      await page.waitForFunction((day) => new URLSearchParams(location.hash.split('?')[1]).get('day') === day, calendarDay(last, 1));
+      await settled(page);
+      // The days stay on the run's last day; dragged one day's width, the day steps once.
+      const box = await page.locator('.today-day.is-centre .today-cards').boundingBox();
+      const x = box.x + box.width / 2;
+      const y = box.y + box.height / 2;
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      for (const step of [20, 60, 120, 1.4 * box.width]) await page.mouse.move(x - step, y + 3);
+      await page.mouse.up();
+      await page.waitForFunction((day) => new URLSearchParams(location.hash.split('?')[1]).get('day') !== day, calendarDay(last, 1));
+      assert.equal(await part(page, 'day'), calendarDay(last, 2));
+      release();
+      await shown(page);
+      assert.equal(await part(page, 'day'), calendarDay(last, 2));
     });
 
     check('with reduced motion the days change in place, and still move', async (page) => {

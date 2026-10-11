@@ -46,9 +46,10 @@ The new Today (#80): the day in the chart's own cards and colours (#77, slice 3)
 
 ### Tests
 - `today.test.mjs`: the days (press, keys, a held key, drag, cancel, a drag brought
-  back, a touch during a mouse's drag, a press moved up and down, a mouse let go off
-  the days, reduced motion, Apia's skipped day, a drag past the run's end, another
-  person's day on its way), the scale, In your chart's
+  back, a touch during a mouse's drag, a press moved up and down, a lost capture, a
+  mouse let go off the days, reduced motion, Apia's skipped day, a drag past the run's
+  end, a drag while the day shown is past the run drawn, another person's day on its
+  way), the scale, In your chart's
   pillars, the dial and the table's hour now, the clock moving on, the couple, the
   five gods in Copy as text, print while a day is on its way, an answer that cannot be
   drawn.
