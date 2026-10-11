@@ -471,7 +471,7 @@ and the rest of the passage cut):
       {"part": "cycle", "first": "Emperor's Peak · Bathing · Birth"}
     ]
   },
-  "engine": {"version": "0.50.1", "…": "…"}
+  "engine": {"version": "0.51.0", "…": "…"}
 }
 ```
 
@@ -609,6 +609,8 @@ The answer, by [Today: the rules](Today.md):
   used), `engine` (as the first chart's);
 - `changes`: any of the day's, month's and year's pillars that changes during the day,
   as the first chart lists them;
+- `natal`: the four pillars of the chart read (`year`, `month`, `day`, `hour`), the
+  partner's with `chart` `partner`;
 - `season`: the school, the ruling element, each element's standing, and for the
   month's commander, the one in command;
 - `favourable`: the school, each element's weight, and the element each of the five
@@ -620,6 +622,10 @@ The answer, by [Today: the rules](Today.md):
   `band`, `parts`), its relationships with the natal chart (each with the canon's
   `line`, `null` in Finnish) and the halves they absorb; the luck pillar with its
   decade and phase;
+- every pillar of the answer (`layers`, `run`, `natal`, the partner's luck pillar) as
+  the first chart gives one, its stem and branch each with `lines`, the lines Standard
+  mode's card draws, top first (`L` a whole line, `B` a broken one): the stem's
+  trigram and the branch's hexagram;
 - `run`: 22 days, each with its pillar, pull and relationships;
 - `hours`: the twelve double hours, each with its clock spans, its `ties` to the day and
   its `call` (`protect`, `mixed`, `avoid`, or `null` without a tie);

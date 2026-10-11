@@ -1,5 +1,63 @@
 # Changelog
 
+## 0.51.0
+
+The new Today (#80): the day in the chart's own cards and colours (#77, slice 3).
+
+### Added
+- **The days**: the chosen day in the middle as the chart's cards (each character in
+  its own element's colours, with its pinyin, its trigram or hexagram and its name),
+  two days of the run on either side, smaller, one on a phone. Left and Right step
+  while they have focus, Home and End go to the run's ends, a press picks a neighbour,
+  and a swipe or drag steps by the days it went, asking once when let go; let go within
+  40px of its start it moves nothing, and another pointer pressed with it (a touch
+  during a mouse's drag too) cancels it, its tap included. A press that went more than
+  10px opens nothing, whether or not it could drag. The days move at
+  once only through the run drawn for the chart, language and person shown. Reduced
+  motion moves nothing.
+- **The pull as a scale**, from −3.5 to +3.5 for every day and layer, its ends named in
+  words by the chart's useful and unfavourable elements, with the five gods.
+- **The couple**: both pulls of the day on one neutral scale, and whether the day pulls
+  them apart.
+- **In your chart** draws the pillars each relationship joins, the chart's own among
+  them, three where there are three.
+- **The hours as a dial**, in true solar order and their elements' colours, with each
+  call's mark and the hour now on today, beside the table, which names the hour now
+  too. The hour now, today's dot in the run and the bar's Today follow the clock.
+- **The API**: Today's answer gives `natal`, the chart's own four pillars (the
+  partner's with `chart: partner`), and `lines` on every stem and branch, as Standard
+  mode's card draws them. Both are additive; `today_v1` keeps its meaning.
+
+### Changed
+- **The run** is a strip of 22 bars around a zero line; each day's text stays in its
+  button, for the reader and for print.
+- **The four pillars** are drawn as small cards, at noon where you are.
+- **Every step goes through the run's own days**, `[` and `]` included, so a date the
+  place's clocks skipped is passed over; past the run's end, a step counts the run's
+  days to that end, then calendar days.
+- **Copy as text** gives the five gods after the pull line and, in a couple, the other
+  side's pull. **Print** gives the chosen day alone, the hours' table without the
+  dial, and while a day is on its way says so rather than the day before. An answer
+  the page cannot draw is neither copied nor printed.
+
+### Fixed
+- An answer with a pull past the scale, or a pillar without its lines, is refused as
+  malformed instead of drawn.
+
+### Tests
+- `today.test.mjs`: the days (press, keys, a held key, drag, cancel, a drag brought
+  back, a touch during a mouse's drag, a press moved up and down or off the days and
+  back, a lost capture, a
+  drag whose run is discarded or whose day a key changes under way, a
+  mouse let go off the days, reduced motion, Apia's skipped day, a drag past the run's
+  end, a drag while the day shown is past the run drawn, another person's day on its
+  way), the scale, In your chart's
+  pillars, the dial and the table's hour now, the clock moving on, the couple, the
+  five gods in Copy as text, print while a day is on its way, an answer that cannot be
+  drawn.
+- `test_api_today.py`: `natal` and `lines`. `test_schools.py`: no pull passes the
+  scale's ends.
+
 ## 0.50.1
 
 What the reviews of #79 found in the pages of 0.50.0.

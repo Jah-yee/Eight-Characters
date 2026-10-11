@@ -3,6 +3,7 @@
 import re
 import unittest
 from datetime import UTC, datetime, timedelta
+from itertools import permutations
 from pathlib import Path
 from typing import ClassVar
 
@@ -492,6 +493,37 @@ class TestPull(unittest.TestCase):
         self.assertEqual(seasoned['score'], 0.78)
         with self.assertRaises(ValueError):
             pull('己', '亥', self.WEIGHTS, metal, layer='luck', transits='phases')
+
+    def test_no_pull_passes_the_scales_ends(self) -> None:
+        # Today draws every pull on one scale from -3.5 to +3.5 (docs/Standard-Today.md).
+        # No pillar's pull may pass it, whatever its layer, the school of transits, the
+        # season's ruler or the order of the five gods. The largest is 3.28, a day or a
+        # month (or a seasoned year or luck pillar) of one element's stem and main qi.
+        stems = list(STEMS)
+        pillars = [(stems[n % 10], BRANCH_CHARS[n % 12]) for n in range(60)]
+        counted = [('day', 'phases', None), ('month', 'phases', None)]
+        for transits in TRANSIT_SCHOOLS:
+            counted.append(('year', transits, None))
+            counted.extend(('luck', transits, phase) for phase in ('stem', 'branch'))
+        largest = 0.0
+        for order in set(permutations(weight for _, weight in GOD_WEIGHTS)):
+            weights = dict(zip(ELEMENTS, order, strict=True))
+            for ruler in ELEMENTS:
+                season = standings(ruler)
+                for stem, branch in pillars:
+                    for layer, transits, phase in counted:
+                        found = pull(
+                            stem,
+                            branch,
+                            weights,
+                            season,
+                            layer=layer,
+                            transits=transits,
+                            phase=phase,
+                        )
+                        largest = max(largest, abs(found['score']))
+        self.assertGreater(largest, 3.0)
+        self.assertLessEqual(largest, 3.5)
 
     def test_bands_and_rounding(self) -> None:
         # Exact thousandths, half away from zero: 1.495 is 1.50, strongly supportive.

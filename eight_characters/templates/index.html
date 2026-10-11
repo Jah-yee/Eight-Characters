@@ -280,14 +280,24 @@
     </header>
     <!-- What the page cannot show yet, or says about what it shows. -->
     <div id="today-notice" class="today-notice hidden" role="status"></div>
+    <!-- Printed while a day is on its way, instead of the day before. -->
+    <p class="today-pending-print" data-i18n="today_pending_print">Päivää luetaan vielä.</p>
     <div id="today-body" class="today-body hidden">
+      <!-- The days: the chosen one in the middle as the chart's cards, its neighbours in
+           the run on either side, smaller. One tab stop; its arrows move the day. -->
+      <span id="today-days-label" class="sr-only" data-i18n="today_days_label">Päivät: nuolinäppäimet siirtävät</span>
+      <div id="today-days" class="today-days" tabindex="0" role="group" aria-labelledby="today-days-label">
+        <div class="today-days-track"></div>
+      </div>
+      <div id="today-run" class="today-run" role="group" aria-labelledby="today-run-label"></div>
       <nav class="chart-topics today-topics" aria-labelledby="today-pull-line">
         <h2 id="today-pull-line" class="day-master-line today-pull-line"></h2>
         <div id="today-topics" class="context-controls"></div>
       </nav>
-      <div id="today-run" class="luck-ribbon today-run" role="group" aria-labelledby="today-run-label"></div>
-      <span id="today-pillars-label" class="sr-only" data-i18n="today_pillars_label">Päivän pilarit</span>
+      <div id="today-scale" class="today-scale"></div>
+      <p id="today-pillars-label" class="today-pillars-note"></p>
       <div id="today-pillars" class="today-pillars" role="group" aria-labelledby="today-pillars-label"></div>
+      <section id="today-couple" class="today-section today-couple hidden" aria-labelledby="today-couple-title"></section>
       <section id="today-in-chart" class="today-section" aria-labelledby="today-in-chart-title"></section>
       <section id="today-hours" class="today-section" aria-labelledby="today-hours-title"></section>
     </div>
@@ -419,6 +429,12 @@
     <div class="key-row key-row-today hidden">
       <dt><kbd>N</kbd></dt>
       <dd data-i18n="key_day_now">Tämä päivä siellä, missä olet</dd>
+    </div>
+    <div class="key-row key-row-today hidden">
+      <dt><kbd class="key-arrow is-left"><span class="sr-only" data-i18n="key_left">Vasen nuoli</span></kbd>
+        <kbd class="key-arrow is-right"><span class="sr-only" data-i18n="key_right">Oikea nuoli</span></kbd>
+        · <kbd>Home</kbd> <kbd>End</kbd></dt>
+      <dd data-i18n="key_days">Päivistä: päivä taakse tai eteen, ajon ensimmäinen tai viimeinen</dd>
     </div>
     <div class="key-row">
       <dt><kbd>Esc</kbd></dt>

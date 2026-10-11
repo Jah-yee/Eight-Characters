@@ -3391,37 +3391,206 @@ body:has(> .compare-container:not(.hidden)) { padding: var(--space-4); }
 }
 .today-body.hidden { display: none; }
 .today-pull-line { margin-right: auto; }
-.today-run { margin: 0; flex-direction: column; }
-.today-run-track {
-  display: flex;
-  gap: var(--space-1);
-  overflow-x: auto;
-  padding: var(--space-1);
-  scroll-snap-type: x proximity;
+
+/* ── The days: the chosen one in the middle as the chart's cards, its neighbours in the
+   run on either side. They recede by size alone, never by opacity or blur, so their text
+   keeps its contrast. A drag moves them with the pointer (--drag). ── */
+.today-days {
+  --card: 136px;
+  --gap: var(--space-3);
+  position: relative;
+  height: 440px;
+  overflow: hidden;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+  border-radius: 12px;
+  outline: none;
 }
-.today-run-day {
-  flex: 0 0 auto;
+.today-days:focus-visible { box-shadow: inset 0 0 0 2px var(--ink-1); }
+.today-days-track { position: absolute; inset: 0; }
+.today-day {
+  --x: 0px;
+  --s: 1;
+  position: absolute;
+  top: var(--space-2);
+  left: 50%;
   display: grid;
   justify-items: center;
+  gap: var(--space-2);
+  width: var(--card);
+  transform: translateX(calc(-50% + var(--x) + var(--drag, 0px))) scale(var(--s));
+  transform-origin: 50% 0;
+  transition: transform 280ms cubic-bezier(0.22, 0.8, 0.2, 1), visibility 280ms;
+  cursor: pointer;
+}
+.today-day.is-centre { cursor: default; }
+.today-day.is-centre .today-cards { filter: drop-shadow(var(--shadow-2)); }
+.today-day[data-place='-1'] { --x: calc(-0.86 * var(--card) - var(--gap)); --s: 0.72; }
+.today-day[data-place='1'] { --x: calc(0.86 * var(--card) + var(--gap)); --s: 0.72; }
+.today-day[data-place='-2'] { --x: calc(-1.48 * var(--card) - 2 * var(--gap)); --s: 0.52; }
+.today-day[data-place='2'] { --x: calc(1.48 * var(--card) + 2 * var(--gap)); --s: 0.52; }
+.today-day[data-place='before'] { --x: calc(-2.1 * var(--card) - 3 * var(--gap)); --s: 0.4; visibility: hidden; }
+.today-day[data-place='after'] { --x: calc(2.1 * var(--card) + 3 * var(--gap)); --s: 0.4; visibility: hidden; }
+.today-days.is-dragging .today-day { transition: none; }
+.today-day-when { display: grid; justify-items: center; text-align: center; }
+.today-day-weekday { font-family: var(--font-serif); font-size: var(--text-3); color: var(--ink-1); }
+.today-day-date { font-size: var(--text-1); color: var(--ink-2); }
+.today-day-pull { font-size: var(--text-1); color: var(--ink-1); white-space: nowrap; }
+
+/* ── The chart's cards: a stem over its branch, each in its element's colours ── */
+.today-cards { display: grid; gap: var(--space-1); width: 100%; }
+.today-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   gap: var(--space-1);
-  min-width: 68px;
-  padding: var(--space-2);
-  border: 1px solid var(--line-1);
-  border-radius: 10px;
-  background: var(--surface-1);
+  padding: var(--space-3) var(--space-1);
+  overflow: hidden;
+  line-height: 1.2;
+}
+.today-card::before { content: ''; position: absolute; inset: 0; background: var(--sheen); pointer-events: none; }
+.today-card.is-stem { border-radius: 14px 14px 3px 3px; }
+.today-card.is-branch { border-radius: 3px 3px 14px 14px; }
+.today-card.metal { background: var(--metal-bg); color: var(--metal-text); }
+.today-card.fire { background: var(--fire-bg); color: var(--fire-text); }
+.today-card.wood { background: var(--wood-bg); color: var(--wood-text); }
+.today-card.earth { background: var(--earth-bg); color: var(--earth-text); }
+.today-card.water { background: var(--water-bg); color: var(--water-text); }
+/* A relationship's member, outlined on its card. */
+.today-card.is-member { box-shadow: inset 0 0 0 2px currentColor; }
+/* By phase, a luck pillar's stem rests in its branch phase. */
+.is-stem-resting .today-card.is-stem.metal { background: var(--metal-tint); }
+.is-stem-resting .today-card.is-stem.fire { background: var(--fire-tint); }
+.is-stem-resting .today-card.is-stem.wood { background: var(--wood-tint); }
+.is-stem-resting .today-card.is-stem.earth { background: var(--earth-tint); }
+.is-stem-resting .today-card.is-stem.water { background: var(--water-tint); }
+.today-card-glyph { font-family: var(--font-glyph); font-weight: 500; line-height: 1; }
+.today-card-pinyin,
+.today-card-name { font-size: var(--text-1); }
+.today-card-name { font-family: var(--font-serif); font-weight: 600; text-align: center; }
+.today-cards.is-large .today-card-glyph { font-size: var(--text-6); }
+.today-cards.is-large .today-card { gap: var(--space-2); }
+.today-cards.is-small .today-card { padding: var(--space-2) var(--space-1); }
+.today-cards.is-small .today-card-glyph { font-size: var(--text-4); }
+.today-cards.is-tiny { width: auto; }
+.today-cards.is-tiny .today-card { padding: var(--space-1) var(--space-2); }
+.today-cards.is-tiny .today-card-glyph { font-size: var(--text-2); }
+.today-gua { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); opacity: 0.65; }
+.today-line { display: flex; justify-content: space-between; width: 30px; height: 3px; }
+.today-line.is-whole { background: currentColor; border-radius: 1px; }
+.today-line.is-broken::before,
+.today-line.is-broken::after { content: ''; width: 11px; height: 3px; border-radius: 1px; background: currentColor; }
+
+/* ── The run: the 22 days as a strip of bars around a zero line ── */
+.today-run { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; }
+.today-run-label { font-size: var(--text-1); color: var(--ink-2); }
+.today-run-track {
+  display: grid;
+  grid-template-columns: repeat(22, minmax(0, 1fr));
+  gap: var(--space-1);
+}
+.today-run-day {
+  position: relative;
+  display: grid;
+  grid-template-rows: 64px auto;
+  justify-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: var(--space-1) 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
   color: var(--ink-1);
   font: inherit;
   cursor: pointer;
-  scroll-snap-align: center;
 }
-.today-run-day:hover { background: var(--surface-2); border-color: var(--line-2); }
+.today-run-day:hover { background: var(--surface-2); }
 .today-run-day:focus-visible { outline: 2px solid var(--ink-2); outline-offset: 2px; }
-.today-run-day.is-selected { border-color: var(--ink-1); box-shadow: inset 0 0 0 1px var(--ink-1); }
+.today-run-day.is-selected { border-color: var(--ink-1); }
+/* Up for a positive pull, down for a negative one, from the zero line in the middle. */
+.today-run-bar {
+  --size: 0;
+  position: relative;
+  width: 100%;
+  max-width: 14px;
+  background: linear-gradient(var(--line-2), var(--line-2)) center / 100% 1px no-repeat;
+}
+.today-run-bar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: calc(var(--size) * 50% + 1px);
+  border: 1px solid var(--ink-2);
+  border-radius: 2px;
+}
+.today-run-bar.is-for::after { bottom: 50%; background: var(--for); }
+.today-run-bar.is-against::after { top: 50%; background: var(--against); }
+.today-run-number { font-size: var(--text-1); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.today-run-day.is-selected .today-run-number { color: var(--ink-1); font-weight: 600; }
+.today-run-day.is-today .today-run-number::after { content: ' •'; }
+/* Each day's text, for the reader and for print. */
+.today-run-text { display: none; }
 .today-run-date { font-size: var(--text-1); color: var(--ink-2); white-space: nowrap; }
 .today-run-chars { font-family: var(--font-glyph); font-size: var(--text-3); }
 .today-run-pinyin { font-size: var(--text-1); color: var(--ink-2); white-space: nowrap; }
 .today-run-score { font-size: var(--text-1); font-variant-numeric: tabular-nums; }
-.today-run-band { display: none; font-size: var(--text-1); }
+.today-run-band { font-size: var(--text-1); }
+
+/* ── The pull's scale: from −3.5 to +3.5, ticks at the bands' edges, the score's mark.
+   The track's outline, ticks and mark are ink; its colours only add to the words. ── */
+.today-scale-figure {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+}
+.today-scale-end { font-size: var(--text-1); color: var(--ink-1); white-space: nowrap; }
+.today-scale-track {
+  --for: var(--surface-2);
+  --against: var(--surface-2);
+  position: relative;
+  display: block;
+  height: 14px;
+  border: 1px solid var(--ink-2);
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--against) 0%, color-mix(in srgb, var(--against) 30%, var(--bg)) 40%, var(--bg) 50%, color-mix(in srgb, var(--for) 30%, var(--bg)) 60%, var(--for) 100%);
+}
+.today-scale-track.is-neutral { background: var(--surface-2); }
+.today-scale-track.is-mini { height: 8px; width: 100%; }
+.today-scale-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--at);
+  width: 1px;
+  background: var(--ink-2);
+}
+.today-scale-tick.is-zero { width: 2px; background: var(--ink-1); }
+.today-scale-marker {
+  position: absolute;
+  top: -6px;
+  bottom: -6px;
+  left: var(--at);
+  width: 4px;
+  border-radius: 2px;
+  background: var(--ink-1);
+  box-shadow: 0 0 0 2px var(--bg);
+  transform: translateX(-50%);
+}
+.today-scale-track.is-mini .today-scale-marker { top: -4px; bottom: -4px; width: 3px; }
+.today-five-gods { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); margin-top: var(--space-2); font-size: var(--text-1); color: var(--ink-1); }
+.today-god { display: inline-flex; align-items: center; gap: var(--space-1); }
+.today-god-chip { width: 10px; height: 10px; border-radius: 3px; border: 1px solid var(--ink-2); }
+.today-god-chip.metal { background: var(--metal-bg); }
+.today-god-chip.fire { background: var(--fire-bg); }
+.today-god-chip.wood { background: var(--wood-bg); }
+.today-god-chip.earth { background: var(--earth-bg); }
+.today-god-chip.water { background: var(--water-bg); }
+.today-pillars-note { font-size: var(--text-1); color: var(--ink-2); margin-bottom: calc(-1 * var(--space-3)); }
+
 /* A band's mark says it by its shape, not by colour alone: a filled circle, a ring, a
    dash, a box and a filled box, from strongly supportive to strongly draining. */
 .today-run-mark,
@@ -3450,13 +3619,17 @@ body:has(> .compare-container:not(.hidden)) { padding: var(--space-4); }
 .today-pillar {
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: var(--space-2);
   min-width: 0;
   padding: var(--space-3);
   border: 1px solid var(--line-1);
   border-radius: 12px;
   background: var(--surface-1);
+  text-align: center;
 }
+.today-pillar-open .today-cards { width: 72px; }
+.today-pillar-scale { display: block; width: 100%; max-width: 160px; }
 .today-pillar-name {
   font-size: var(--text-1);
   font-weight: 500;
@@ -3467,7 +3640,7 @@ body:has(> .compare-container:not(.hidden)) { padding: var(--space-4); }
 .today-pillar-open {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   gap: var(--space-1);
   padding: 0;
   border: 0;
@@ -3516,6 +3689,54 @@ body:has(> .compare-container:not(.hidden)) { padding: var(--space-4); }
 .today-relationship-kind { font-weight: 500; color: var(--ink-1); }
 .today-relationship-members { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); color: var(--ink-2); }
 .today-relationship-line { flex-basis: 100%; color: var(--ink-2); font-style: italic; }
+/* The pillars a relationship joins: the day's and the chart's own, each named. */
+.today-relationship-figure {
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+.today-member-pillar { display: grid; justify-items: center; gap: var(--space-1); }
+.today-member-place { font-size: var(--text-1); color: var(--ink-2); }
+.today-relationship-link { align-self: center; width: 24px; height: 1px; background: var(--ink-2); }
+
+/* ── The couple: both pulls of the day, on one neutral scale ── */
+.today-couple-day .today-cards { width: 56px; }
+.today-couple-sides { list-style: none; display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5); padding: 0; }
+.today-couple-side { display: flex; align-items: baseline; gap: var(--space-2); }
+.today-couple-name { font-weight: 500; color: var(--ink-1); }
+.today-couple-key { width: 12px; height: 12px; align-self: center; border: 2px solid var(--ink-1); }
+.today-couple-side.is-first .today-couple-key { border-radius: 50%; background: var(--ink-1); }
+.today-couple-side.is-second .today-couple-key { border-radius: 2px; background: var(--bg); }
+.today-couple-scale { display: block; max-width: 520px; }
+.today-scale-marker.is-first { border-radius: 50%; width: 12px; top: -1px; bottom: auto; height: 12px; }
+.today-scale-marker.is-second { width: 12px; top: -1px; bottom: auto; height: 12px; border: 2px solid var(--ink-1); background: var(--bg); }
+.today-couple-apart { color: var(--ink-1); }
+
+/* ── The hours: the dial beside its table ── */
+.today-hours-body { display: grid; grid-template-columns: minmax(0, 240px) minmax(0, 1fr); gap: var(--space-5); align-items: start; }
+.today-dial { width: 100%; height: auto; }
+.today-dial-hour path { stroke: var(--bg); stroke-width: 1.5; }
+.today-dial-hour.metal { color: var(--metal-text); }
+.today-dial-hour.fire { color: var(--fire-text); }
+.today-dial-hour.wood { color: var(--wood-text); }
+.today-dial-hour.earth { color: var(--earth-text); }
+.today-dial-hour.water { color: var(--water-text); }
+.today-dial-hour.metal path { fill: var(--metal-bg); }
+.today-dial-hour.fire path { fill: var(--fire-bg); }
+.today-dial-hour.wood path { fill: var(--wood-bg); }
+.today-dial-hour.earth path { fill: var(--earth-bg); }
+.today-dial-hour.water path { fill: var(--water-bg); }
+.today-dial-hour.is-now path { stroke: var(--ink-1); stroke-width: 3; }
+.today-hour-now { font-weight: 600; }
+.today-dial text { fill: currentColor; text-anchor: middle; dominant-baseline: middle; }
+.today-dial-glyph { font-family: var(--font-glyph); font-size: var(--text-3); }
+.today-dial-pinyin { font-size: var(--text-1); }
+.today-dial-call { fill: currentColor; }
+.today-dial-now { color: var(--ink-1); }
+.today-dial-now-label { font-size: var(--text-1); }
+.today-dial-now-hour { font-size: var(--text-2); }
 .today-hours,
 .today-parts,
 .today-health {
@@ -3550,12 +3771,37 @@ body:has(> .compare-container:not(.hidden)) { padding: var(--space-4); }
 @media (max-width: 640px) {
   .today-pillars { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .today-hours tbody th { white-space: normal; }
+  /* One day on either side, and the run in two rows of eleven. */
+  .today-days { --card: 116px; height: 400px; }
+  .today-day:is([data-place='-2'], [data-place='2']) { visibility: hidden; }
+  .today-run-track { grid-template-columns: repeat(11, minmax(0, 1fr)); row-gap: var(--space-2); }
+  .today-scale-figure { grid-template-columns: 1fr 1fr; }
+  .today-scale-figure .today-scale-track { grid-column: 1 / -1; grid-row: 2; }
+  .today-scale-end.is-for { text-align: right; }
+  .today-hours-body { grid-template-columns: minmax(0, 1fr); justify-items: center; }
+  .today-dial { max-width: 240px; }
 }
-/* On paper the run shows every day, each with its band as a word. */
+@media (prefers-reduced-motion: reduce) {
+  .today-day { transition: none; }
+}
+/* While a day is on its way, print says so, and never the day before under its date. */
+.today-pending-print { display: none; }
+/* On paper: the chosen day, not its neighbours; the hours' table, not their dial; and the
+   run as a list, every day with its band as a word. */
 @media print {
-  .today-view .today-run.luck-ribbon { display: flex !important; }
-  .today-run-track { flex-wrap: wrap; overflow: visible; }
-  .today-run-band { display: block; }
+  .today-view[aria-busy='true'] .today-pending-print { display: block; }
+  .today-view[aria-busy='true'] :is(.today-body, .chart-panel, .today-notice) { display: none !important; }
+  .today-days { height: auto; overflow: visible; }
+  .today-days-track { position: static; display: flex; justify-content: center; }
+  .today-day { position: static; transform: none; transition: none; }
+  .today-day:not(.is-centre) { display: none; }
+  .today-dial { display: none; }
+  .today-hours-body { display: block; }
+  .today-run-track { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); }
+  .today-run-day { display: block; border: 0; padding: 0; }
+  .today-run-bar,
+  .today-run-number { display: none; }
+  .today-run-text { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1); }
   .today-notice .settings-actions { display: none; }
 }
 
@@ -3625,7 +3871,10 @@ body:has(> .compare-container:not(.hidden)) { padding: var(--space-4); }
   .card-face,
   .hidden-stems-panel,
   .hidden-stem-dot,
-  .role-mark {
+  .role-mark,
+  .today-card,
+  .today-god-chip,
+  .today-scale-track {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
