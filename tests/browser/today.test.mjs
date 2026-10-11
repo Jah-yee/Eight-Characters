@@ -578,7 +578,9 @@ describe(`${engineName} / today and the session`, { concurrency: false }, () => 
     const first = await ownAccount(page, 'en', 'today-first');
     const second = await newAccount(playwright, { language: 'en', label: 'today-second' });
     await asAccount(playwright, first, async (request) => {
-      const mine = await request.post('/api/account/charts', { data: { ...SELF, key: first.key, updated_at: null } });
+      // Made from the settings as they are: the account keeps a place already.
+      const now = await (await request.get('/api/account/settings')).json();
+      const mine = await request.post('/api/account/charts', { data: { ...SELF, key: first.key, updated_at: now.updated_at } });
       assert.equal(mine.status(), 201, await mine.text());
       const { saved, updated_at: read } = await mine.json();
       const kept = await request.post('/api/account/charts', {

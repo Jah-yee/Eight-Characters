@@ -508,8 +508,12 @@ describe(`${engineName} / settings signed out`, { concurrency: false }, () => {
     await page.waitForFunction(() => document.querySelector('#library-btn .library-label').textContent === 'Mine');
     // A chart link opens its own chart; New chart still opens the form.
     await page.goto(new URL(chartLink({ date: '1977-02-03' }), process.env.EC_BASE_URL).href);
-    await page.locator('#chart-view').waitFor({ state: 'visible' });
+    // The chart on screen was already shown: the link's own is drawn once its heading
+    // names it.
+    await page.waitForFunction(() => document.getElementById('chart-date').textContent.includes('1977'));
+    await settled(page);
     assert.equal(await page.evaluate(() => new URLSearchParams(location.hash.split('?')[1]).get('date')), '1977-02-03');
+    await page.waitForFunction(() => document.querySelector('#library-btn .library-label').textContent === 'Unsaved chart');
     await page.locator('#new-chart-btn').click();
     await page.locator('#input-view').waitFor({ state: 'visible' });
     assert.equal(await page.evaluate(() => location.hash), '');
