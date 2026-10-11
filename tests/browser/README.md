@@ -146,6 +146,24 @@ absent roles, unrooted visible stems, repeated visible identities, nested back/f
 navigation, exclusive selection, card gestures, Finnish layouts, and corrupted
 profile rejection. `chart-helpers.mjs` is shared by the role, context, and relationship suites.
 
+The Today suite (`today.test.mjs`) checks every number against the API's answer, and:
+- the days: the chosen day as the chart's cards (each character in its element's
+  colours, with its pinyin and the answer's lines), the run's days beside it (two on
+  either side, one on a phone), moved by a press, by Left, Right, Home and End while
+  they have focus (a held key steps once, and elsewhere the arrows are not the day's),
+  and by a drag that asks once when let go; a drag up, or cancelled, moves nothing;
+  reduced motion moves the days in place; a step passes over Apia's skipped day;
+- the scale: the marker at the score, the band ticks, both ends and the five gods in
+  words, each layer on the same scale, and a pull past its ends refused;
+- In your chart: every relationship's pillars, the chart's own among them, three
+  members where there are three;
+- the hours: one wedge per hour with its call's mark, the hour now on today alone, and
+  the table;
+- the couple: both pulls, the pull-apart sentence, turned around on the partner's day,
+  and none without a couple;
+- copy and print: the five gods in Copy as text; print while a day is on its way says
+  so, and a drawn day prints the chosen day alone, without the dial.
+
 The readings suite (`reading.test.mjs`) reads the canon's own example chart and
 charts with each kind of relationship, each well clear of an hour's or a month's
 change. It checks:
