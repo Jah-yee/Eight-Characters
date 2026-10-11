@@ -85,6 +85,7 @@ GRAVES: Final = '辰戌丑未'
 # The three-way combinations (三合), each with its middle branch, whose main qi is the
 # combination's element.
 COMBINATIONS: Final[tuple[str, ...]] = ('申子辰', '亥卯未', '寅午戌', '巳酉丑')
+STEM_ORDER: Final = '甲乙丙丁戊己庚辛壬癸'
 
 Gods = tuple[TenGodName, ...]
 FRIEND: Final[Gods] = ('friend',)
@@ -1298,6 +1299,15 @@ OFFICER_SHOWN: Final[tuple[str, list[Rule]]] = (
 )
 
 
+def _combiner_of_officer(day_master: str) -> TenGodName:
+    """The god of the stem that combines (五合) the Day Master's Direct Officer: the
+    Eating God for a yang Day Master (丙 with 辛 for 甲), the Day Master's own Friend for a
+    yin one (乙 with 庚 for 乙)."""
+    officer = next(stem for stem in STEM_ORDER if ten_god(day_master, stem) == 'direct_officer')
+    partner = next(stem for stem in STEM_ORDER if frozenset((officer, stem)) in COMBINING)
+    return ten_god(day_master, partner)
+
+
 class Reading(TypedDict):
     naming: Naming
     # Why the school does not read the chart, or None when it does.
@@ -1360,6 +1370,7 @@ def luck_reading(
     texts = [case.text]
     if structure == 'direct_officer' and facts.show(OFFICER):
         rules += OFFICER_SHOWN[1]
+        rules.append(rule((_combiner_of_officer(facts.day_master),), 'against', '不可逢合'))
         texts.insert(0, OFFICER_SHOWN[0])
     rules += case.rules(facts)
     verdicts: dict[TenGodName, Verdict] = dict.fromkeys(_ALL_GODS, 'idle')

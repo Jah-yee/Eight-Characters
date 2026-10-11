@@ -939,6 +939,15 @@ class TestLuckCases(unittest.TestCase):
                 for short, verdict in expected.items():
                     self.assertEqual(verdicts[G[short]], verdict, short)
 
+    def test_a_shown_officer_must_not_meet_a_combination(self) -> None:
+        # 若官露而不可逢合: the stem that combines the shown Direct Officer is against,
+        # the Eating God for a yang Day Master (丙 with 辛 for 甲), the Friend for a yin
+        # one (乙 with 庚 for 乙).
+        _, _, verdicts, words = luck_reading('direct_officer', facts('甲', '辛'))
+        self.assertEqual((verdicts['eating_god'], words['eating_god']), ('against', '不可逢合'))
+        _, _, verdicts, _ = luck_reading('direct_officer', facts('乙', '庚'))
+        self.assertEqual(verdicts['friend'], 'against')
+
     def test_every_case_is_tested(self) -> None:
         tested = {(structure, case) for structure, _, case, _ in CASES}
         for structure, cases in LUCK_CASES.items():
@@ -990,7 +999,6 @@ class TestOuterStructures(unittest.TestCase):
         # lists these as outer, though a god the month can use shows in a stem; the
         # school follows the first rule and reads them by their month.
         for who, chart, structure in (
-            ('冲子官, with 庚 Wealth shown', '甲寅 庚午 丙午 甲午', 'yang_blade'),
             (
                 '蜀王, 合禄, with 庚 Eating God shown',
                 '己未 戊辰 戊辰 庚申',
@@ -1020,8 +1028,10 @@ class TestOuterStructures(unittest.TestCase):
     def test_broken_structures_are_not_read(self) -> None:
         # 建禄月劫，无财官，透煞印，建禄月劫之格败也.
         self.assertEqual(read('庚子 甲寅 甲子 甲子')['outer'], 'broken')
-        # 阳刃无官煞，刃格败也.
+        # 阳刃无官煞，刃格败也: also 论杂格's 冲子官 chart, whose Blade has no Officer or
+        # Killings shown or held as a branch's main qi.
         self.assertEqual(read('戊辰 丁卯 甲子 甲子')['outer'], 'broken')
+        self.assertEqual(read('甲寅 庚午 丙午 甲午')['outer'], 'broken')
         # 官煞藏而不露: 穆同知's Officer is the main qi of its Wu branch, and is read.
         reading = read('甲午 癸酉 庚寅 戊寅')
         self.assertIsNone(reading['outer'])
