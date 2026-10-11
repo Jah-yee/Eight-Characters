@@ -190,7 +190,9 @@ def _saved(settings: Settings, chart_id: str) -> SavedChart:
     return chart
 
 
-def _not_saved_elsewhere(settings: Settings, birth: Birth, chart_id: str | None) -> None:
+def _not_saved_elsewhere(
+    settings: Settings, birth: Birth, chart_id: str | None
+) -> None:
     """DuplicateChart if a saved chart other than `chart_id` is drawn from the birth: a
     birth is saved once, so the chart on screen names one saved chart at most."""
     same = settings.chart_of(birth)

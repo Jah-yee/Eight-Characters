@@ -94,6 +94,8 @@ PARTNER = Birth(
     gender='male',
     zi='whole_zi_23',
 )
+
+
 def born(number: int) -> Birth:
     """Made-up births, each charting differently: a day of January 1990 and an hour."""
     return replace(
@@ -226,7 +228,9 @@ class TestSettingsRecords(unittest.TestCase):
                 SETTINGS,
                 charts=(
                     SavedChart(MINE_ID, BIRTH),
-                    SavedChart(PARTNER_ID, replace(BIRTH, name='Again', time='08:30:00')),
+                    SavedChart(
+                        PARTNER_ID, replace(BIRTH, name='Again', time='08:30:00')
+                    ),
                 ),
                 couples=(),
             ),
@@ -575,7 +579,9 @@ class TestSettingsStore(StoreCase):
         # chart can still be renamed: a rename does not chart the birth again.
         skipped = replace(PARTNER, date='2021-03-28', time='03:30', place=HELSINKI)
         _, chart_id = self.save(skipped)
-        renamed = self.store.rename_chart(self.user.id, chart_id, 'Renamed', self.read())
+        renamed = self.store.rename_chart(
+            self.user.id, chart_id, 'Renamed', self.read()
+        )
         assert renamed is not None
         self.assertEqual(
             renamed.charts, (SavedChart(chart_id, replace(skipped, name='Renamed')),)
@@ -1006,7 +1012,11 @@ class TestSettingsApi(unittest.TestCase):
         return [
             ('POST', '/api/account/charts', _birth_json(born(6), self.key)),
             ('PUT', f'/api/account/charts/{chart}', _birth_json(born(7), self.key)),
-            ('PUT', f'/api/account/charts/{chart}/name', {'key': self.key, 'name': 'B'}),
+            (
+                'PUT',
+                f'/api/account/charts/{chart}/name',
+                {'key': self.key, 'name': 'B'},
+            ),
             ('PUT', '/api/account/my-chart', {'key': self.key, 'chart': chart}),
             ('DELETE', '/api/account/my-chart', {'key': self.key}),
             (
@@ -1271,7 +1281,12 @@ class TestSettingsApi(unittest.TestCase):
                 f'/api/account/charts/{third}/name',
                 {'key': self.key, 'name': 'x' * 81},
             ),
-            (404, 'PUT', f'/api/account/charts/{unknown}/name', {'key': self.key, 'name': 'A'}),
+            (
+                404,
+                'PUT',
+                f'/api/account/charts/{unknown}/name',
+                {'key': self.key, 'name': 'A'},
+            ),
             # A couple is two charts.
             (
                 400,
@@ -1314,14 +1329,18 @@ class TestSettingsApi(unittest.TestCase):
     def test_a_chart_is_renamed_without_its_birth(self) -> None:
         chart_id = self.save(PARTNER)
         renamed = self.write(
-            'PUT', f'/api/account/charts/{chart_id}/name', {'key': self.key, 'name': 'Ö'}
+            'PUT',
+            f'/api/account/charts/{chart_id}/name',
+            {'key': self.key, 'name': 'Ö'},
         )
         self.assertEqual(renamed.status_code, 200, renamed.text)
         (chart,) = renamed.json()['charts']
         self.assertEqual((chart['id'], chart['name']), (chart_id, 'Ö'))
         self.assertEqual((chart['date'], chart['time']), (PARTNER.date, PARTNER.time))
         unnamed = self.write(
-            'PUT', f'/api/account/charts/{chart_id}/name', {'key': self.key, 'name': None}
+            'PUT',
+            f'/api/account/charts/{chart_id}/name',
+            {'key': self.key, 'name': None},
         )
         self.assertIsNone(unnamed.json()['charts'][0]['name'])
 
@@ -1331,7 +1350,9 @@ class TestSettingsApi(unittest.TestCase):
         for reply in (
             self.client.get('/api/account/settings'),
             self.write(
-                'PUT', '/api/account/place', {'key': self.key, 'place': _place_json(LISBON)}
+                'PUT',
+                '/api/account/place',
+                {'key': self.key, 'place': _place_json(LISBON)},
             ),
             self.client.post('/api/account/export', json={'key': self.key}),
             self.client.get('/api/account'),

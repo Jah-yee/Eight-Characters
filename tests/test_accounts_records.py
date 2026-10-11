@@ -116,7 +116,7 @@ class TestRecordFiles(unittest.TestCase):
             b'  "kind": "user",\n'
             b'  "language": "fi",\n'
             b'  "plan": "free",\n'
-            b'  "schema": 2,\n'
+            b'  "schema": 3,\n'
             b'  "settings": null,\n'
             b'  "updated_at": "2026-10-07T12:30:00Z"\n'
             b'}\n',
@@ -146,7 +146,7 @@ class TestRecordFiles(unittest.TestCase):
             'not an object': b'[]\n',
             'missing a field': canonical.replace(b'  "plan": "free",\n', b''),
             'an extra field': self._variant(admin=True),
-            'another schema': self._variant(schema=3),
+            'another schema': self._variant(schema=4),
             'a schema 1 record with settings': self._variant(schema=1),
             'a schema that is not a number': self._variant(schema=True),
             'another kind': self._variant(kind='chart'),
