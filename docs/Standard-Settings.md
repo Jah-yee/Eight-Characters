@@ -40,7 +40,8 @@ Settings have three parts for them:
   both charts. Two saved charts not in a couple can be paired; **Add the partner as a
   new birth** saves one and pairs it with the chosen chart in one write. A chart is in
   one couple at most. A partner's chart kept from before accounts kept charts is
-  listed as waiting, and pairs with your chart once you mark one.
+  listed as waiting, and pairs with your chart once you mark one; marking it, or saving
+  a new birth as yours, then says with whom it paired.
 - **Saved charts**: each with Open, Rename, Correct the birth and Remove. Rename starts
   from the name as it is, quotes and all. Remove asks once more on its own button,
   saying what else ends: the chart's being yours, its couple (naming the other chart),
@@ -50,8 +51,9 @@ Settings have three parts for them:
 **Add a new birth**, **Add the partner as a new birth** and **Correct the birth** open
 the birth form at `#save?as=mine`, `#save?as=partner&with=<id>` or
 `#save?as=correct&chart=<id>`. The form says what it saves, asks for a name, needs a
-gender, and checks the birth as it checks a chart's; Save keeps it and goes back to
-Settings, and Cancel goes back without saving. A correction keeps the chart's Zi-hour
+gender, and checks the birth as it checks a chart's; a birth saved already is said so,
+by the chart's name, and not asked for again. Save keeps it and goes back to Settings,
+and Cancel goes back without saving. A correction keeps the chart's Zi-hour
 convention, and its pass while its day, time and zone are unchanged. With the library
 full, Add a new birth and Add the partner as a new birth say so instead.
 

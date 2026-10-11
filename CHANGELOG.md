@@ -20,6 +20,10 @@ What the reviews of #79 found in the pages of 0.50.0.
   library's Save and Settings' Add a new birth. The settings answer `chart_limit`.
 - **Remove says what else ends**: the chart's being yours, its couple (naming the other
   chart), or its wait to pair with your chart.
+- **Marking your chart says the couple it forms** with a partner kept from before
+  charts, by name, and so does saving a new birth as yours.
+- **The birth form says a birth is saved already**, by the chart's name and in the
+  page's language, instead of the API's English refusal.
 - **Edit, then Create chart, makes the same chart.** The form dropped the chart's
   Zi-hour convention, which can change the day pillar, and the pass of a repeated hour,
   which the API then refused. The convention is kept whatever is edited, and the pass
@@ -28,8 +32,9 @@ What the reviews of #79 found in the pages of 0.50.0.
 
 ### Tests
 - `settings.test.mjs`: a name with quotes renamed; Pair and Save pressed twice; a full
-  library; what Remove says; Edit keeping the convention and the pass; another account
-  taken with a read held on its way, with Settings open, and while a birth is corrected.
+  library; what Remove says; a birth saved already; the couple a marking forms; Edit
+  keeping the convention and the pass; another account taken with a read held on its
+  way, with Settings open, and while a birth is corrected.
 - `today.test.mjs`: another account taken while the day is read.
 - `test_accounts_settings.py`: the settings answer `chart_limit`.
 

@@ -620,6 +620,64 @@ for (const profile of profiles) {
       assert.equal((await read(page)).charts.length, 3, 'nothing was removed');
     });
 
+    check('a birth saved already is said so by the form, in the page’s language, and the API is not asked', async (page) => {
+      await reset(page);
+      await page.route('**/api/location_suggest', (route) => route.fulfill({ json: { suggestions: [HELSINKI] } }));
+      await saveElsewhere(page, { ...SCREEN, time: '21:05', name: 'Kept' });
+      await openSettings(page);
+      const asked = [];
+      page.on('request', (request) => {
+        if (new URL(request.url()).pathname === '/api/account/charts' && request.method() === 'POST') asked.push(request.url());
+      });
+      await page.locator('[data-settings-action="add-mine"]').click();
+      await page.locator('#save-note').waitFor({ state: 'visible' });
+      await page.locator('#date').fill(BIRTH.date);
+      await page.locator('#time').fill('21:05');
+      await page.locator('#location').fill('Helsinki');
+      await page.locator('#location-suggestions .location-suggestion').click();
+      await page.locator(`.gender-option input[value="${BIRTH.gender}"]`).check();
+      await page.locator('#create-chart-btn').click();
+      await page.waitForFunction(() => document.getElementById('form-error').textContent === 'This chart is saved already, as Kept.');
+      assert.deepEqual(asked, []);
+      assert.equal((await read(page)).charts.length, 1);
+    });
+
+    check('marked as yours, or saved as yours, a chart says the couple it forms with a partner kept from before charts', async (page) => {
+      await reset(page);
+      await page.route('**/api/location_suggest', (route) => route.fulfill({ json: { suggestions: [HELSINKI] } }));
+      const mine = await saveElsewhere(page, { ...SCREEN, name: 'Mine' });
+      const waiting = await saveElsewhere(page, partnerNamed('Waiting'));
+      await openSettings(page);
+      // The API pairs a partner kept from before charts with the chart next marked as
+      // yours (test_accounts_settings.py); here its answers are given that couple.
+      const paired = (method, id) => async (route) => {
+        if (route.request().method() !== method) return route.fallback();
+        const response = await route.fetch();
+        const value = await response.json();
+        const chart = id ?? value.saved;
+        return route.fulfill({ response, json: { ...value, couples: [...value.couples, { id: chart.split('').reverse().join(''), charts: [chart, waiting] }] } });
+      };
+      await page.route('**/api/account/my-chart', paired('PUT', mine));
+      await page.locator('#settings-mine-choice').selectOption(mine);
+      await page.locator('[data-settings-action="mark"]').click();
+      await page.waitForFunction(() => document.querySelector('.toast').textContent !== '');
+      assert.equal(await page.locator('.toast').textContent(), 'Your chart is marked, and paired with Waiting.');
+      // Saved as yours from the form, the same.
+      await changeElsewhere(page, 'DELETE', '/api/account/my-chart', {});
+      await page.route('**/api/account/charts', paired('POST', null));
+      await openSettings(page);
+      await page.locator('[data-settings-action="add-mine"]').click();
+      await page.locator('#save-note').waitFor({ state: 'visible' });
+      await page.locator('#date').fill('1990-01-02');
+      await page.locator('#time').fill('10:00');
+      await page.locator('#location').fill('Helsinki');
+      await page.locator('#location-suggestions .location-suggestion').click();
+      await page.locator('.gender-option input[value="female"]').check();
+      await page.locator('#create-chart-btn').click();
+      await page.locator('#settings-view').waitFor({ state: 'visible' });
+      assert.equal(await page.locator('.toast').textContent(), 'The chart is saved as yours, and paired with Waiting.');
+    });
+
     check('Edit, then Create chart, makes the same chart again: its Zi-hour convention, and its pass', async (page) => {
       const asked = [];
       page.on('request', (request) => {

@@ -736,6 +736,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // A birth from Settings is kept, and Settings shown again.
     if (saving !== null) {
       const mode = saving;
+      const before = settingsPage.current();
       setPending(true);
       let problem;
       try {
@@ -746,7 +747,13 @@ document.addEventListener('DOMContentLoaded', () => {
       } finally {
         setPending(false);
       }
-      const done = requiredTranslation(mode.as === 'correct' ? 'save_corrected' : 'save_chart_saved');
+      // Saved as yours, a partner kept from before charts pairs with it: said, by name.
+      const after = settingsPage.current();
+      const paired = problem === null && mode.as === 'mine' && before !== null && after !== null && after.my_chart !== null
+        ? window.EC_LIBRARY.pairedSince(before, after, after.my_chart) : null;
+      const done = paired !== null
+        ? requiredTranslation('save_chart_saved_paired', { name: settingsPage.chartName(paired) })
+        : requiredTranslation(mode.as === 'correct' ? 'save_corrected' : 'save_chart_saved');
       // Cancelled, or left, while the save was on its way: kept all the same, it is said,
       // and the page stays where it went.
       if (saving !== mode) {
@@ -2074,6 +2081,12 @@ document.addEventListener('DOMContentLoaded', () => {
       const before = window.EC_LIBRARY.chartWith(settingsPage.current(), mode.chart);
       if (before !== null && before.date === birth.date && sameClock(before.time, birth.time)
         && before.place.timezone === birth.place.timezone) birth.fold = mode.fold;
+    }
+    // A birth is saved once: one saved already, as another chart, is said here, in the
+    // page's language, and the API is not asked.
+    const already = kept === null ? null : window.EC_LIBRARY.savedOf(kept, birth);
+    if (already !== null && already.id !== mode.chart) {
+      return requiredTranslation('save_chart_saved_already', { name: settingsPage.chartName(already) });
     }
     if (mode.as === 'correct') return settingsPage.correctChart(mode.chart, birth, mode.basis);
     return settingsPage.saveChart(birth, { mine: mode.as === 'mine', coupleWith: mode.with }, mode.basis);

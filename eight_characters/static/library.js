@@ -28,6 +28,13 @@
     const couple = coupleOf(kept, id);
     return couple === null ? null : chartWith(kept, couple.charts.find((other) => other !== id));
   };
+  // The chart a write paired with chart `id`, by the settings before it and after: a
+  // partner kept from before charts pairs with the chart marked as yours. Null when the
+  // write formed no couple for it.
+  const pairedSince = (before, after, id) => {
+    const formed = after.couples.find((couple) => couple.charts.includes(id) && !before.couples.some((old) => old.id === couple.id));
+    return formed === undefined ? null : chartWith(after, formed.charts.find((other) => other !== id));
+  };
   // A saved chart's own link, as the chart's bar writes one.
   const chartParams = (birth, lang) => {
     const params = new URLSearchParams({
@@ -197,5 +204,5 @@
     };
   };
 
-  window.EC_LIBRARY = { create, keyOf, savedOf, chartWith, coupleOf, partnerOf, chartParams, strip };
+  window.EC_LIBRARY = { create, keyOf, savedOf, chartWith, coupleOf, partnerOf, pairedSince, chartParams, strip };
 })();

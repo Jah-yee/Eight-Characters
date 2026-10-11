@@ -210,7 +210,8 @@
         }
       });
     };
-    // A change from this page: done, it is said briefly; refused, its reason stays here.
+    // A change from this page: done, it is said briefly (`done`, or what it says of the
+    // settings the change left); refused, its reason stays here.
     const change = async (method, path, body, done) => {
       let problem;
       try {
@@ -221,7 +222,7 @@
       }
       if (problem === null) {
         say('');
-        toast(done, false);
+        toast(typeof done === 'function' ? done(settings) : done, false);
         return true;
       }
       say(problem, true);
@@ -377,9 +378,14 @@
           break;
         case 'mark': {
           const chosen = chosenIn('#settings-mine-choice');
-          if (chosen !== null) {
-            await once(`mark ${chosen}`, () => change('PUT', '/api/account/my-chart', { chart: chosen }, t('settings_mine_marked')));
-          }
+          if (chosen === null) break;
+          // A partner kept from before charts pairs with the chart marked: said, by name.
+          const before = drawn;
+          const marked = (now) => {
+            const partner = library.pairedSince(before, now, chosen);
+            return partner === null ? t('settings_mine_marked') : t('settings_mine_marked_paired', { name: chartName(partner) });
+          };
+          await once(`mark ${chosen}`, () => change('PUT', '/api/account/my-chart', { chart: chosen }, marked));
           break;
         }
         case 'unmark':
