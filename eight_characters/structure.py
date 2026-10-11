@@ -68,19 +68,6 @@ STRUCTURE_OF_GOD: Final[dict[TenGodName, StructureName]] = {
     'direct_resource': 'resource',
 }
 _OWN: Final[frozenset[TenGodName]] = frozenset({'friend', 'rob_wealth'})
-# 用神不必外求: the gods a Jian Lu Yue Jie or Yang Blade chart takes its use from,
-# 财官煞食.
-_USES: Final[frozenset[TenGodName]] = frozenset(
-    {
-        'eating_god',
-        'hurting_officer',
-        'indirect_wealth',
-        'direct_wealth',
-        'seven_killings',
-        'direct_officer',
-    }
-)
-
 # Each Day Master's prosperity (禄 Lu), the branch it is rooted in at its height.
 PROSPERITY: Final[dict[str, str]] = dict(zip('甲乙丙丁戊己庚辛壬癸', '寅卯巳午巳午申酉亥子', strict=True))
 # 论阳刃: 禄前一位，惟五阳有之 (the branch after the prosperity, for yang Day Masters only).
@@ -297,7 +284,7 @@ DIRECTIONS: Final[dict[str, ElementName]] = {
 
 def element_of_god(day_master: str, god: TenGodName) -> ElementName:
     own = element_of(day_master)
-    return {
+    elements: dict[TenGodName, ElementName] = {
         'friend': own,
         'rob_wealth': own,
         'eating_god': generates(own),
@@ -308,7 +295,8 @@ def element_of_god(day_master: str, god: TenGodName) -> ElementName:
         'direct_officer': controller_of(own),
         'indirect_resource': generator_of(own),
         'direct_resource': generator_of(own),
-    }[god]
+    }
+    return elements[god]
 
 
 @dataclass(frozen=True)
@@ -458,6 +446,10 @@ def _supported_beyond_day_master(pillars: Mapping[str, tuple[str, str]]) -> bool
 Rule = tuple[Gods, Verdict, str]
 
 
+def rule(gods: Gods, verdict: Verdict, word: str) -> Rule:
+    return (gods, verdict, word)
+
+
 @dataclass(frozen=True)
 class LuckCase:
     id: str
@@ -479,11 +471,11 @@ _DIRECT_OFFICER: Final[tuple[LuckCase, ...]] = (
         '其命中用劫合煞，则财运可行，伤食可行，身旺，印绶亦可行，只不过复露七煞。',
         lambda f: f.show(KILLINGS) and f.combined(ROB, KILLINGS),
         lambda f: [
-            (WEALTH, 'favourable', '可行'),
-            (OUTPUT, 'favourable', '可行'),
-            (COMPANIONS, 'favourable', '身旺'),
-            (RESOURCE, 'favourable', '可行'),
-            (KILLINGS, 'against', '只不过复露七煞'),
+            rule(WEALTH, 'favourable', '可行'),
+            rule(OUTPUT, 'favourable', '可行'),
+            rule(COMPANIONS, 'favourable', '身旺'),
+            rule(RESOURCE, 'favourable', '可行'),
+            rule(KILLINGS, 'against', '只不过复露七煞'),
         ],
     ),
     LuckCase(
@@ -491,45 +483,45 @@ _DIRECT_OFFICER: Final[tuple[LuckCase, ...]] = (
         '若命用伤官合煞，则伤食与财俱可行，而不宜逢印矣。',
         lambda f: f.show(KILLINGS) and f.combined(HURTING, KILLINGS),
         lambda f: [
-            (OUTPUT + WEALTH, 'favourable', '俱可行'),
-            (RESOURCE, 'against', '不宜'),
+            rule(OUTPUT + WEALTH, 'favourable', '俱可行'),
+            rule(RESOURCE, 'against', '不宜'),
         ],
     ),
     LuckCase(
         'killings',
         '正官而带煞，伤食反为不碍。',
         lambda f: f.show(KILLINGS),
-        lambda f: [(OUTPUT, 'idle', '不碍')],
+        lambda f: [rule(OUTPUT, 'idle', '不碍')],
     ),
     LuckCase(
         'output_and_resource',
         '正官带伤食而用印制，运喜官旺印旺之乡，财运切忌。若印绶叠出，财运亦无害矣。',
         lambda f: f.show(OUTPUT) and f.show(RESOURCE),
         lambda f: [
-            (OFFICER + RESOURCE, 'favourable', '喜'),
-            (WEALTH, 'idle', '无害')
+            rule(OFFICER + RESOURCE, 'favourable', '喜'),
+            rule(WEALTH, 'idle', '无害')
             if f.shown_count(RESOURCE) > 1
-            else (WEALTH, 'strongly_against', '切忌'),
+            else rule(WEALTH, 'strongly_against', '切忌'),
         ],
     ),
     LuckCase(
         'wealth_and_resource',
         '正官而用财印，身稍轻则取助身，官稍轻则助官。',
         lambda f: f.show(WEALTH) and f.show(RESOURCE),
-        lambda f: [(COMPANIONS, 'favourable', '助身')]
+        lambda f: [rule(COMPANIONS, 'favourable', '助身')]
         if f.weak
-        else [(OFFICER, 'favourable', '助官')],
+        else [rule(OFFICER, 'favourable', '助官')],
     ),
     LuckCase(
         'wealth',
         '正官用财，运喜印绶身旺之地，切忌食伤。若身旺而财轻官弱，即仍取财官运可也。',
         lambda f: f.show(WEALTH),
         lambda f: [
-            (RESOURCE + COMPANIONS, 'favourable', '喜'),
-            (OUTPUT, 'strongly_against', '切忌'),
+            rule(RESOURCE + COMPANIONS, 'favourable', '喜'),
+            rule(OUTPUT, 'strongly_against', '切忌'),
         ]
         + (
-            [(WEALTH + OFFICER, 'favourable', '可也')]
+            [rule(WEALTH + OFFICER, 'favourable', '可也')]
             if not f.weak and f.heavier(SUPPORT, WEALTH) and f.heavier(SUPPORT, OFFICERS)
             else []
         ),
@@ -538,11 +530,11 @@ _DIRECT_OFFICER: Final[tuple[LuckCase, ...]] = (
         'resource',
         '正官佩印，运喜财乡，伤食反吉。若官重身轻而佩印，则身旺为宜，不必财运也。',
         lambda f: f.show(RESOURCE),
-        lambda f: [(OUTPUT, 'favourable', '反吉')]
+        lambda f: [rule(OUTPUT, 'favourable', '反吉')]
         + (
-            [(COMPANIONS, 'favourable', '为宜'), (WEALTH, 'idle', '不必')]
+            [rule(COMPANIONS, 'favourable', '为宜'), rule(WEALTH, 'idle', '不必')]
             if f.weak and f.heavier(OFFICERS, SUPPORT)
-            else [(WEALTH, 'favourable', '喜')]
+            else [rule(WEALTH, 'favourable', '喜')]
         ),
     ),
 )
@@ -554,16 +546,16 @@ _WEALTH: Final[tuple[LuckCase, ...]] = (
         '财用煞印，印旺最宜，逢财必忌。伤食之方，亦任意矣。',
         lambda f: f.show(KILLINGS) and f.show(RESOURCE),
         lambda f: [
-            (RESOURCE, 'most', '最宜'),
-            (WEALTH, 'strongly_against', '必忌'),
-            (OUTPUT, 'idle', '亦任意'),
+            rule(RESOURCE, 'most', '最宜'),
+            rule(WEALTH, 'strongly_against', '必忌'),
+            rule(OUTPUT, 'idle', '亦任意'),
         ],
     ),
     LuckCase(
         'killings',
         '财带七煞。不论合煞制煞，运喜食伤身旺之方。',
         lambda f: f.show(KILLINGS),
-        lambda f: [(OUTPUT + COMPANIONS, 'favourable', '喜')],
+        lambda f: [rule(OUTPUT + COMPANIONS, 'favourable', '喜')],
     ),
     LuckCase(
         'officer',
@@ -571,13 +563,13 @@ _WEALTH: Final[tuple[LuckCase, ...]] = (
         '至于生官而带食破局，则运喜印绶，而逢煞反吉矣。',
         lambda f: f.show(OFFICER),
         lambda f: [
-            (COMPANIONS + RESOURCE, 'favourable', '喜'),
-            (KILLINGS, 'favourable', '反吉')
+            rule(COMPANIONS + RESOURCE, 'favourable', '喜'),
+            rule(KILLINGS, 'favourable', '反吉')
             if f.show(EATING)
-            else (KILLINGS, 'against', '不利'),
-            (HURTING, 'idle', '不甚有害')
+            else rule(KILLINGS, 'against', '不利'),
+            rule(HURTING, 'idle', '不甚有害')
             if f.show(RESOURCE)
-            else (HURTING, 'against', '不利'),
+            else rule(HURTING, 'against', '不利'),
         ],
     ),
     LuckCase(
@@ -585,9 +577,9 @@ _WEALTH: Final[tuple[LuckCase, ...]] = (
         '财带伤官，财运则亨，煞运不利，运行官印，未见其美矣。',
         lambda f: f.show(HURTING),
         lambda f: [
-            (WEALTH, 'favourable', '亨'),
-            (KILLINGS, 'against', '不利'),
-            (OFFICER + RESOURCE, 'against', '未见其美'),
+            rule(WEALTH, 'favourable', '亨'),
+            rule(KILLINGS, 'against', '不利'),
+            rule(OFFICER + RESOURCE, 'against', '未见其美'),
         ],
     ),
     LuckCase(
@@ -595,30 +587,30 @@ _WEALTH: Final[tuple[LuckCase, ...]] = (
         '财用食印，财轻则喜财食，身轻则喜比印，官运有碍，煞反不忌也。',
         lambda f: f.show(EATING) and f.show(RESOURCE),
         lambda f: (
-            [(WEALTH + EATING, 'favourable', '喜')] if f.heavier(SUPPORT, WEALTH) else []
+            [rule(WEALTH + EATING, 'favourable', '喜')] if f.heavier(SUPPORT, WEALTH) else []
         )
-        + ([(COMPANIONS + RESOURCE, 'favourable', '喜')] if f.weak else [])
-        + [(OFFICER, 'against', '有碍'), (KILLINGS, 'idle', '不忌')],
+        + ([rule(COMPANIONS + RESOURCE, 'favourable', '喜')] if f.weak else [])
+        + [rule(OFFICER, 'against', '有碍'), rule(KILLINGS, 'idle', '不忌')],
     ),
     LuckCase(
         'eating_god',
         '财用食生，财食重而身轻，则喜助身；财食轻而身重，则仍行财食。煞运不忌，官印反晦矣。',
         lambda f: f.show(EATING),
         lambda f: (
-            [(COMPANIONS, 'favourable', '喜')]
+            [rule(COMPANIONS, 'favourable', '喜')]
             if f.weak and f.heavier(WEALTH + EATING, SUPPORT)
-            else [(WEALTH + EATING, 'favourable', '仍行')]
+            else [rule(WEALTH + EATING, 'favourable', '仍行')]
             if not f.weak and f.heavier(SUPPORT, WEALTH + EATING)
             else []
         )
-        + [(KILLINGS, 'idle', '不忌'), (OFFICER + RESOURCE, 'against', '反晦')],
+        + [rule(KILLINGS, 'idle', '不忌'), rule(OFFICER + RESOURCE, 'against', '反晦')],
     ),
     LuckCase(
         'resource',
         '财格佩印，运喜官乡，身弱逢之，最喜印旺。',
         lambda f: f.show(RESOURCE),
-        lambda f: [(OFFICER, 'favourable', '喜')]
-        + ([(RESOURCE, 'most', '最喜')] if f.weak else []),
+        lambda f: [rule(OFFICER, 'favourable', '喜')]
+        + ([rule(RESOURCE, 'most', '最喜')] if f.weak else []),
     ),
 )
 
@@ -629,9 +621,9 @@ _RESOURCE: Final[tuple[LuckCase, ...]] = (
         '印格而官煞竞透，运喜食神伤官，印旺身旺，行之亦利。若再透官煞，行财运，立见其灾矣。',
         lambda f: f.show(OFFICER) and f.show(KILLINGS),
         lambda f: [
-            (OUTPUT, 'favourable', '喜'),
-            (RESOURCE + COMPANIONS, 'favourable', '亦利'),
-            (OFFICERS + WEALTH, 'strongly_against', '立见其灾'),
+            rule(OUTPUT, 'favourable', '喜'),
+            rule(RESOURCE + COMPANIONS, 'favourable', '亦利'),
+            rule(OFFICERS + WEALTH, 'strongly_against', '立见其灾'),
         ],
     ),
     LuckCase(
@@ -639,9 +631,9 @@ _RESOURCE: Final[tuple[LuckCase, ...]] = (
         '若用煞而兼带伤食，运喜身旺印绶之方，伤食亦美，逢官遇财，皆不吉也。',
         lambda f: f.show(KILLINGS) and f.show(OUTPUT),
         lambda f: [
-            (COMPANIONS + RESOURCE, 'favourable', '喜'),
-            (OUTPUT, 'favourable', '亦美'),
-            (OFFICER + WEALTH, 'against', '不吉'),
+            rule(COMPANIONS + RESOURCE, 'favourable', '喜'),
+            rule(OUTPUT, 'favourable', '亦美'),
+            rule(OFFICER + WEALTH, 'against', '不吉'),
         ],
     ),
     LuckCase(
@@ -649,9 +641,9 @@ _RESOURCE: Final[tuple[LuckCase, ...]] = (
         '印用七煞，运喜伤食，身旺之方，亦为美地，一见财乡，其凶立至。',
         lambda f: f.show(KILLINGS),
         lambda f: [
-            (OUTPUT, 'favourable', '喜'),
-            (COMPANIONS, 'favourable', '亦为美地'),
-            (WEALTH, 'strongly_against', '其凶立至'),
+            rule(OUTPUT, 'favourable', '喜'),
+            rule(COMPANIONS, 'favourable', '亦为美地'),
+            rule(WEALTH, 'strongly_against', '其凶立至'),
         ],
     ),
     LuckCase(
@@ -659,9 +651,9 @@ _RESOURCE: Final[tuple[LuckCase, ...]] = (
         '若用官而带伤食，运喜官旺印绶之乡，伤食为害，逢煞不忌矣。',
         lambda f: f.show(OFFICER) and f.show(OUTPUT),
         lambda f: [
-            (OFFICER + RESOURCE, 'favourable', '喜'),
-            (OUTPUT, 'against', '为害'),
-            (KILLINGS, 'idle', '不忌'),
+            rule(OFFICER + RESOURCE, 'favourable', '喜'),
+            rule(OUTPUT, 'against', '为害'),
+            rule(KILLINGS, 'idle', '不忌'),
         ],
     ),
     LuckCase(
@@ -669,9 +661,9 @@ _RESOURCE: Final[tuple[LuckCase, ...]] = (
         '印绶遇财，运喜劫地，官印亦亨，财乡则忌。',
         lambda f: f.show(WEALTH),
         lambda f: [
-            (ROB, 'favourable', '喜'),
-            (OFFICER + RESOURCE, 'favourable', '亦亨'),
-            (WEALTH, 'strongly_against', '忌'),
+            rule(ROB, 'favourable', '喜'),
+            rule(OFFICER + RESOURCE, 'favourable', '亦亨'),
+            rule(WEALTH, 'strongly_against', '忌'),
         ],
     ),
     LuckCase(
@@ -680,19 +672,19 @@ _RESOURCE: Final[tuple[LuckCase, ...]] = (
         lambda f: f.show(OUTPUT),
         lambda f: [
             # 印用食伤，印轻者亦不利见财也.
-            (WEALTH, 'against', '印轻者亦不利见财')
+            rule(WEALTH, 'against', '印轻者亦不利见财')
             if f.heavier(OUTPUT, RESOURCE)
-            else (WEALTH, 'favourable', '反吉'),
-            (OUTPUT, 'favourable', '亦利'),
-            (OFFICER, 'strongly_against', '反见其灾'),
-            (KILLINGS, 'favourable', '反能为福'),
+            else rule(WEALTH, 'favourable', '反吉'),
+            rule(OUTPUT, 'favourable', '亦利'),
+            rule(OFFICER, 'strongly_against', '反见其灾'),
+            rule(KILLINGS, 'favourable', '反能为福'),
         ],
     ),
     LuckCase(
         'officer_resource_heavy',
         '其印绶用官者，官露印重，财运反吉，伤食之方，亦为最利。',
         lambda f: f.show(OFFICER) and f.heavier(RESOURCE, OFFICERS),
-        lambda f: [(WEALTH, 'favourable', '反吉'), (OUTPUT, 'most', '最利')],
+        lambda f: [rule(WEALTH, 'favourable', '反吉'), rule(OUTPUT, 'most', '最利')],
     ),
 )
 
@@ -703,21 +695,21 @@ _EATING_GOD: Final[tuple[LuckCase, ...]] = (
         '食用煞印，运喜印旺，切忌财乡。身旺，食伤亦为福运，行官行煞，亦为吉也。',
         lambda f: f.show(KILLINGS) and f.show(RESOURCE),
         lambda f: [
-            (RESOURCE, 'favourable', '喜'),
-            (COMPANIONS + OUTPUT, 'favourable', '亦为福运'),
-            (OFFICERS, 'favourable', '亦为吉'),
-            (WEALTH, 'strongly_against', '切忌'),
+            rule(RESOURCE, 'favourable', '喜'),
+            rule(COMPANIONS + OUTPUT, 'favourable', '亦为福运'),
+            rule(OFFICERS, 'favourable', '亦为吉'),
+            rule(WEALTH, 'strongly_against', '切忌'),
         ],
     ),
     LuckCase(
         'killings',
         '食伤带煞，喜行印绶，身旺，食伤亦为美运，财则最忌。若食太重而煞轻，印运最利，逢财反吉矣。',
         lambda f: f.show(KILLINGS),
-        lambda f: [(COMPANIONS + OUTPUT, 'favourable', '亦为美运')]
+        lambda f: [rule(COMPANIONS + OUTPUT, 'favourable', '亦为美运')]
         + (
-            [(RESOURCE, 'most', '最利'), (WEALTH, 'favourable', '反吉')]
+            [rule(RESOURCE, 'most', '最利'), rule(WEALTH, 'favourable', '反吉')]
             if f.heavier(OUTPUT, KILLINGS)
-            else [(RESOURCE, 'favourable', '喜'), (WEALTH, 'strongly_against', '最忌')]
+            else [rule(RESOURCE, 'favourable', '喜'), rule(WEALTH, 'strongly_against', '最忌')]
         ),
     ),
     LuckCase(
@@ -725,9 +717,9 @@ _EATING_GOD: Final[tuple[LuckCase, ...]] = (
         '若食神带印，透财以解，运喜财旺，食伤亦吉，印与官煞皆忌也。',
         lambda f: f.show(RESOURCE) and f.show(WEALTH),
         lambda f: [
-            (WEALTH, 'favourable', '喜'),
-            (OUTPUT, 'favourable', '亦吉'),
-            (RESOURCE + OFFICERS, 'strongly_against', '皆忌'),
+            rule(WEALTH, 'favourable', '喜'),
+            rule(OUTPUT, 'favourable', '亦吉'),
+            rule(RESOURCE + OFFICERS, 'strongly_against', '皆忌'),
         ],
     ),
     LuckCase(
@@ -735,10 +727,10 @@ _EATING_GOD: Final[tuple[LuckCase, ...]] = (
         '食神太旺而带印，运最利财，食伤亦吉，印则最忌，官煞皆不吉也。',
         lambda f: f.show(RESOURCE) and f.heavier(OUTPUT, SUPPORT),
         lambda f: [
-            (WEALTH, 'most', '最利'),
-            (OUTPUT, 'favourable', '亦吉'),
-            (RESOURCE, 'strongly_against', '最忌'),
-            (OFFICERS, 'against', '不吉'),
+            rule(WEALTH, 'most', '最利'),
+            rule(OUTPUT, 'favourable', '亦吉'),
+            rule(RESOURCE, 'strongly_against', '最忌'),
+            rule(OFFICERS, 'against', '不吉'),
         ],
     ),
     LuckCase(
@@ -746,10 +738,10 @@ _EATING_GOD: Final[tuple[LuckCase, ...]] = (
         '食神生财，财食轻，则行财食，财食重则喜帮身。官煞之方，俱为不美。',
         lambda f: f.show(WEALTH),
         lambda f: [
-            (COMPANIONS, 'favourable', '喜')
+            rule(COMPANIONS, 'favourable', '喜')
             if f.heavier(WEALTH + EATING, SUPPORT)
-            else (WEALTH + EATING, 'favourable', '行'),
-            (OFFICERS, 'against', '不美'),
+            else rule(WEALTH + EATING, 'favourable', '行'),
+            rule(OFFICERS, 'against', '不美'),
         ],
     ),
 )
@@ -760,19 +752,19 @@ _SEVEN_KILLINGS: Final[tuple[LuckCase, ...]] = (
         'officer',
         '煞带正官，不论去官留煞，去煞留官，身轻则喜助身，食轻则喜助食。',
         lambda f: f.show(OFFICER),
-        lambda f: ([(COMPANIONS, 'favourable', '喜')] if f.weak else [])
-        + ([(EATING, 'favourable', '喜')] if f.heavier(KILLINGS, EATING) else []),
+        lambda f: ([rule(COMPANIONS, 'favourable', '喜')] if f.weak else [])
+        + ([rule(EATING, 'favourable', '喜')] if f.heavier(KILLINGS, EATING) else []),
     ),
     LuckCase(
         'wealth_clears_resource',
         '七煞用财，其以财而去印存食者，不利劫财，伤食皆吉，喜财怕印，透煞亦顺。',
         lambda f: f.show(WEALTH) and f.show(RESOURCE) and f.show(EATING),
         lambda f: [
-            (ROB, 'against', '不利'),
-            (OUTPUT, 'favourable', '皆吉'),
-            (WEALTH, 'favourable', '喜'),
-            (RESOURCE, 'against', '怕'),
-            (KILLINGS, 'favourable', '亦顺'),
+            rule(ROB, 'against', '不利'),
+            rule(OUTPUT, 'favourable', '皆吉'),
+            rule(WEALTH, 'favourable', '喜'),
+            rule(RESOURCE, 'against', '怕'),
+            rule(KILLINGS, 'favourable', '亦顺'),
         ],
     ),
     LuckCase(
@@ -781,33 +773,33 @@ _SEVEN_KILLINGS: Final[tuple[LuckCase, ...]] = (
         '忌正官之混杂，畏印绶之夺食。',
         lambda f: f.show(EATING),
         lambda f: (
-            [(EATING, 'favourable', '助食')]
+            [rule(EATING, 'favourable', '助食')]
             if f.heavier(KILLINGS, EATING)
-            else [(KILLINGS, 'favourable', '助煞')]
+            else [rule(KILLINGS, 'favourable', '助煞')]
             if f.heavier(EATING, KILLINGS)
-            else [(COMPANIONS, 'favourable', '助身')]
+            else [rule(COMPANIONS, 'favourable', '助身')]
             if f.weak
             else []
         )
-        + [(OFFICER, 'strongly_against', '忌'), (RESOURCE, 'against', '畏')],
+        + [rule(OFFICER, 'strongly_against', '忌'), rule(RESOURCE, 'against', '畏')],
     ),
     LuckCase(
         'resource',
         '煞用印绶，不利财乡，伤官为美，印绶身旺，俱为福地。',
         lambda f: f.show(RESOURCE),
         lambda f: [
-            (WEALTH, 'against', '不利'),
-            (HURTING, 'favourable', '为美'),
-            (RESOURCE + COMPANIONS, 'favourable', '俱为福地'),
+            rule(WEALTH, 'against', '不利'),
+            rule(HURTING, 'favourable', '为美'),
+            rule(RESOURCE + COMPANIONS, 'favourable', '俱为福地'),
         ],
     ),
     LuckCase(
         'wealth_helps_killings',
         '其以财而助煞不及者，财已足，则喜食印与帮身；财未足，则喜财旺而露煞。',
         lambda f: f.show(WEALTH) and f.heavier(SUPPORT, KILLINGS),
-        lambda f: [(EATING + RESOURCE + COMPANIONS, 'favourable', '喜')]
+        lambda f: [rule(EATING + RESOURCE + COMPANIONS, 'favourable', '喜')]
         if f.heavier(WEALTH, KILLINGS)
-        else [(WEALTH + KILLINGS, 'favourable', '喜')],
+        else [rule(WEALTH + KILLINGS, 'favourable', '喜')],
     ),
     LuckCase(
         'rob_wealth_against_killings',
@@ -815,11 +807,11 @@ _SEVEN_KILLINGS: Final[tuple[LuckCase, ...]] = (
         '七煞既纯，杂官不利。',
         lambda f: not f.show(EATING) and f.show(ROB),
         lambda f: [
-            (KILLINGS, 'favourable', '喜助煞')
+            rule(KILLINGS, 'favourable', '喜助煞')
             if f.heavier(COMPANIONS, KILLINGS)
-            else (OUTPUT, 'favourable', '宜制伏'),
-            (RESOURCE, 'idle', '何伤'),
-            (OFFICER, 'against', '不利'),
+            else rule(OUTPUT, 'favourable', '宜制伏'),
+            rule(RESOURCE, 'idle', '何伤'),
+            rule(OFFICER, 'against', '不利'),
         ],
     ),
 )
@@ -831,10 +823,10 @@ _HURTING_OFFICER: Final[tuple[LuckCase, ...]] = (
         '伤官而用煞印，印运最利，伤食亦亨，杂官非吉，逢财即危。',
         lambda f: f.show(KILLINGS) and f.show(RESOURCE),
         lambda f: [
-            (RESOURCE, 'most', '最利'),
-            (OUTPUT, 'favourable', '亦亨'),
-            (OFFICER, 'against', '非吉'),
-            (WEALTH, 'strongly_against', '即危'),
+            rule(RESOURCE, 'most', '最利'),
+            rule(OUTPUT, 'favourable', '亦亨'),
+            rule(OFFICER, 'against', '非吉'),
+            rule(WEALTH, 'strongly_against', '即危'),
         ],
     ),
     LuckCase(
@@ -843,22 +835,22 @@ _HURTING_OFFICER: Final[tuple[LuckCase, ...]] = (
         '而逢财为凶矣。',
         lambda f: f.show(KILLINGS),
         lambda f: [
-            (OUTPUT, 'favourable', '喜'),
-            (RESOURCE + COMPANIONS, 'favourable', '亦吉'),
-            (WEALTH, 'strongly_against', '为凶'),
+            rule(OUTPUT, 'favourable', '喜'),
+            rule(RESOURCE + COMPANIONS, 'favourable', '亦吉'),
+            rule(WEALTH, 'strongly_against', '为凶'),
         ]
         if f.rooted(KILLINGS)
-        else [(RESOURCE, 'favourable', '喜'), (WEALTH, 'favourable', '亦吉')]
+        else [rule(RESOURCE, 'favourable', '喜'), rule(WEALTH, 'favourable', '亦吉')]
         if f.heavier(HURTING, KILLINGS)
-        else [(RESOURCE, 'favourable', '喜'), (WEALTH, 'strongly_against', '忌')],
+        else [rule(RESOURCE, 'favourable', '喜'), rule(WEALTH, 'strongly_against', '忌')],
     ),
     LuckCase(
         'wealth_and_resource',
         '伤官而兼用财印，其财多而带印者，运喜助印，印多而带财者，运喜助财。',
         lambda f: f.show(WEALTH) and f.show(RESOURCE),
-        lambda f: [(RESOURCE, 'favourable', '喜')]
+        lambda f: [rule(RESOURCE, 'favourable', '喜')]
         if f.heavier(WEALTH, RESOURCE)
-        else [(WEALTH, 'favourable', '喜')]
+        else [rule(WEALTH, 'favourable', '喜')]
         if f.heavier(RESOURCE, WEALTH)
         else [],
     ),
@@ -867,19 +859,19 @@ _HURTING_OFFICER: Final[tuple[LuckCase, ...]] = (
         '伤官佩印，运行官煞为宜，印运亦吉，伤食不碍，财地则凶。',
         lambda f: f.show(RESOURCE),
         lambda f: [
-            (OFFICERS, 'favourable', '为宜'),
-            (RESOURCE, 'favourable', '亦吉'),
-            (OUTPUT, 'idle', '不碍'),
-            (WEALTH, 'strongly_against', '凶'),
+            rule(OFFICERS, 'favourable', '为宜'),
+            rule(RESOURCE, 'favourable', '亦吉'),
+            rule(OUTPUT, 'idle', '不碍'),
+            rule(WEALTH, 'strongly_against', '凶'),
         ],
     ),
     LuckCase(
         'wealth',
         '伤官用财，财旺身轻，则利印比；身强财浅，则喜财运，伤官亦宜。',
         lambda f: f.show(WEALTH),
-        lambda f: [(RESOURCE + COMPANIONS, 'favourable', '利')]
+        lambda f: [rule(RESOURCE + COMPANIONS, 'favourable', '利')]
         if f.weak and f.heavier(WEALTH, SUPPORT)
-        else [(WEALTH, 'favourable', '喜'), (HURTING, 'favourable', '亦宜')]
+        else [rule(WEALTH, 'favourable', '喜'), rule(HURTING, 'favourable', '亦宜')]
         if not f.weak and f.heavier(SUPPORT, WEALTH)
         else [],
     ),
@@ -887,7 +879,7 @@ _HURTING_OFFICER: Final[tuple[LuckCase, ...]] = (
         'officer_metal',
         '伤官用官，运喜财印，不利食伤',
         lambda f: f.show(OFFICER) and element_of(f.day_master) == 'metal',
-        lambda f: [(WEALTH + RESOURCE, 'favourable', '喜'), (OUTPUT, 'against', '不利')],
+        lambda f: [rule(WEALTH + RESOURCE, 'favourable', '喜'), rule(OUTPUT, 'against', '不利')],
     ),
 )
 
@@ -898,9 +890,9 @@ _YANG_BLADE: Final[tuple[LuckCase, ...]] = (
         '阳刃而官煞并出，不论去官去煞，运喜制伏，身旺亦利，财地官乡反为不吉也。',
         lambda f: f.show(OFFICER) and f.show(KILLINGS),
         lambda f: [
-            (OUTPUT, 'favourable', '喜'),
-            (COMPANIONS, 'favourable', '亦利'),
-            (WEALTH + OFFICER, 'against', '不吉'),
+            rule(OUTPUT, 'favourable', '喜'),
+            rule(COMPANIONS, 'favourable', '亦利'),
+            rule(WEALTH + OFFICER, 'against', '不吉'),
         ],
     ),
     LuckCase(
@@ -908,19 +900,19 @@ _YANG_BLADE: Final[tuple[LuckCase, ...]] = (
         '阳刃用煞，煞不甚旺，则运喜助煞；煞若太重，则运喜身旺印绶，伤食亦不为忌。',
         lambda f: f.show(KILLINGS),
         lambda f: [
-            (COMPANIONS + RESOURCE, 'favourable', '喜'),
-            (OUTPUT, 'idle', '不为忌'),
+            rule(COMPANIONS + RESOURCE, 'favourable', '喜'),
+            rule(OUTPUT, 'idle', '不为忌'),
         ]
         if f.heavier(KILLINGS, SUPPORT)
-        else [(KILLINGS, 'favourable', '喜')],
+        else [rule(KILLINGS, 'favourable', '喜')],
     ),
     LuckCase(
         'officer',
         '阳刃用官，则运喜助官，然命中官星根深，则印绶比劫之方，反为美运，但不喜伤食合官耳。',
         lambda f: f.show(OFFICER),
-        lambda f: [(OFFICER, 'favourable', '喜')]
-        + ([(RESOURCE + COMPANIONS, 'favourable', '反为美运')] if f.rooted(OFFICER) else [])
-        + [(OUTPUT, 'against', '不喜')],
+        lambda f: [rule(OFFICER, 'favourable', '喜')]
+        + ([rule(RESOURCE + COMPANIONS, 'favourable', '反为美运')] if f.rooted(OFFICER) else [])
+        + [rule(OUTPUT, 'against', '不喜')],
     ),
 )
 
@@ -931,10 +923,10 @@ _JIAN_LU_YUE_JIE: Final[tuple[LuckCase, ...]] = (
         '禄劫而官煞并出，不论合煞留官，存官制煞，运喜伤食，比肩亦宜，印绶未为良图，财官亦非福运。',
         lambda f: f.show(OFFICER) and f.show(KILLINGS),
         lambda f: [
-            (OUTPUT, 'favourable', '喜'),
-            (FRIEND, 'favourable', '亦宜'),
-            (RESOURCE, 'against', '未为良图'),
-            (WEALTH + OFFICER, 'against', '亦非福运'),
+            rule(OUTPUT, 'favourable', '喜'),
+            rule(FRIEND, 'favourable', '亦宜'),
+            rule(RESOURCE, 'against', '未为良图'),
+            rule(WEALTH + OFFICER, 'against', '亦非福运'),
         ],
     ),
     LuckCase(
@@ -944,19 +936,19 @@ _JIAN_LU_YUE_JIE: Final[tuple[LuckCase, ...]] = (
         and f.show(WEALTH)
         and f.combined(tuple(_ALL_GODS), KILLINGS),
         lambda f: [
-            (OUTPUT, 'favourable', '为宜'),
-            (WEALTH, 'idle', '不忌'),
-            (OFFICER, 'idle', '无虑'),
-            (COMPANIONS, 'favourable', '亦亨'),
+            rule(OUTPUT, 'favourable', '为宜'),
+            rule(WEALTH, 'idle', '不忌'),
+            rule(OFFICER, 'idle', '无虑'),
+            rule(COMPANIONS, 'favourable', '亦亨'),
         ],
     ),
     LuckCase(
         'wealth_combined_killings_kept',
         '若命中合财存煞，而用食制，煞轻则助煞，食轻则助食则已。',
         lambda f: f.show(KILLINGS) and f.show(WEALTH) and f.combined(tuple(_ALL_GODS), WEALTH),
-        lambda f: [(KILLINGS, 'favourable', '助煞')]
+        lambda f: [rule(KILLINGS, 'favourable', '助煞')]
         if f.heavier(EATING, KILLINGS)
-        else [(EATING, 'favourable', '助食')]
+        else [rule(EATING, 'favourable', '助食')]
         if f.heavier(KILLINGS, EATING)
         else [],
     ),
@@ -964,9 +956,9 @@ _JIAN_LU_YUE_JIE: Final[tuple[LuckCase, ...]] = (
         'killings_and_eating_god',
         '禄劫用煞食制，食重煞轻，则运宜助煞；食轻煞重，则运喜助食。',
         lambda f: f.show(KILLINGS) and f.show(EATING),
-        lambda f: [(KILLINGS, 'favourable', '宜')]
+        lambda f: [rule(KILLINGS, 'favourable', '宜')]
         if f.heavier(EATING, KILLINGS)
-        else [(EATING, 'favourable', '喜')]
+        else [rule(EATING, 'favourable', '喜')]
         if f.heavier(KILLINGS, EATING)
         else [],
     ),
@@ -975,10 +967,10 @@ _JIAN_LU_YUE_JIE: Final[tuple[LuckCase, ...]] = (
         '禄劫用官，印护者喜财，怕官星之逢合，畏七煞之相乘。伤食不能为害，劫比未即为凶。',
         lambda f: f.show(OFFICER) and f.show(RESOURCE),
         lambda f: [
-            (WEALTH, 'favourable', '喜'),
-            (KILLINGS, 'against', '畏'),
-            (OUTPUT, 'idle', '不能为害'),
-            (COMPANIONS, 'idle', '未即为凶'),
+            rule(WEALTH, 'favourable', '喜'),
+            rule(KILLINGS, 'against', '畏'),
+            rule(OUTPUT, 'idle', '不能为害'),
+            rule(COMPANIONS, 'idle', '未即为凶'),
         ],
     ),
     LuckCase(
@@ -986,11 +978,11 @@ _JIAN_LU_YUE_JIE: Final[tuple[LuckCase, ...]] = (
         '财生喜印，宜官星之植根，畏伤食之相侮，逢财愈见其功，杂煞岂能无碍？',
         lambda f: f.show(OFFICER) and f.show(WEALTH),
         lambda f: [
-            (RESOURCE, 'favourable', '喜'),
-            (OFFICER, 'favourable', '宜'),
-            (OUTPUT, 'against', '畏'),
-            (WEALTH, 'favourable', '愈见其功'),
-            (KILLINGS, 'against', '岂能无碍'),
+            rule(RESOURCE, 'favourable', '喜'),
+            rule(OFFICER, 'favourable', '宜'),
+            rule(OUTPUT, 'against', '畏'),
+            rule(WEALTH, 'favourable', '愈见其功'),
+            rule(KILLINGS, 'against', '岂能无碍'),
         ],
     ),
     LuckCase(
@@ -998,21 +990,21 @@ _JIAN_LU_YUE_JIE: Final[tuple[LuckCase, ...]] = (
         '禄劫用财而带伤食，财食重则喜印绶，而不忌比肩；财食轻则宜助财，而不喜印比。逢煞无伤，遇官非福。',
         lambda f: f.show(WEALTH) and f.show(OUTPUT),
         lambda f: (
-            [(RESOURCE, 'favourable', '喜'), (FRIEND, 'idle', '不忌')]
+            [rule(RESOURCE, 'favourable', '喜'), rule(FRIEND, 'idle', '不忌')]
             if f.heavier(WEALTH + OUTPUT, SUPPORT)
-            else [(WEALTH, 'favourable', '宜'), (RESOURCE + COMPANIONS, 'against', '不喜')]
+            else [rule(WEALTH, 'favourable', '宜'), rule(RESOURCE + COMPANIONS, 'against', '不喜')]
         )
-        + [(KILLINGS, 'idle', '无伤'), (OFFICER, 'against', '非福')],
+        + [rule(KILLINGS, 'idle', '无伤'), rule(OFFICER, 'against', '非福')],
     ),
     LuckCase(
         'output',
         '禄劫而用伤食，财运最宜，煞亦不忌，行印非吉，透官不美。若命中伤食太重，则财运固利，而印亦不忌矣。',
         lambda f: f.show(OUTPUT),
-        lambda f: [(KILLINGS, 'idle', '不忌'), (OFFICER, 'against', '不美')]
+        lambda f: [rule(KILLINGS, 'idle', '不忌'), rule(OFFICER, 'against', '不美')]
         + (
-            [(WEALTH, 'favourable', '固利'), (RESOURCE, 'idle', '不忌')]
+            [rule(WEALTH, 'favourable', '固利'), rule(RESOURCE, 'idle', '不忌')]
             if f.heavier(OUTPUT, SUPPORT)
-            else [(WEALTH, 'most', '最宜'), (RESOURCE, 'against', '非吉')]
+            else [rule(WEALTH, 'most', '最宜'), rule(RESOURCE, 'against', '非吉')]
         ),
     ),
 )
@@ -1047,59 +1039,59 @@ GENERAL: Final[dict[StructureName, LuckCase]] = {
         'general',
         '官喜透财以相生，生印以护官……官逢伤克刑冲，官格败也',
         _always,
-        lambda f: [(WEALTH + RESOURCE, 'favourable', '喜'), (HURTING, 'against', '败')],
+        lambda f: [rule(WEALTH + RESOURCE, 'favourable', '喜'), rule(HURTING, 'against', '败')],
     ),
     'wealth': LuckCase(
         'general',
         '财喜食神以相生，生官以护财……财轻比重，财透七煞，财格败也',
         _always,
         lambda f: [
-            (EATING + OFFICER, 'favourable', '喜'),
-            (COMPANIONS + KILLINGS, 'against', '败'),
+            rule(EATING + OFFICER, 'favourable', '喜'),
+            rule(COMPANIONS + KILLINGS, 'against', '败'),
         ],
     ),
     'resource': LuckCase(
         'general',
         '印喜官煞以相生，劫财以护印……印轻逢财……印格败也',
         _always,
-        lambda f: [(OFFICERS + ROB, 'favourable', '喜'), (WEALTH, 'against', '败')],
+        lambda f: [rule(OFFICERS + ROB, 'favourable', '喜'), rule(WEALTH, 'against', '败')],
     ),
     'eating_god': LuckCase(
         'general',
         '食喜身旺以相生，生财以护食……食神逢枭……食神格败也',
         _always,
-        lambda f: [(COMPANIONS + WEALTH, 'favourable', '喜'), (OWL, 'against', '败')],
+        lambda f: [rule(COMPANIONS + WEALTH, 'favourable', '喜'), rule(OWL, 'against', '败')],
     ),
     'seven_killings': LuckCase(
         'general',
         '七煞喜食神以制伏，忌财印以资扶',
         _always,
-        lambda f: [(EATING, 'favourable', '喜'), (WEALTH + RESOURCE, 'strongly_against', '忌')],
+        lambda f: [rule(EATING, 'favourable', '喜'), rule(WEALTH + RESOURCE, 'strongly_against', '忌')],
     ),
     'hurting_officer': LuckCase(
         'general',
         '伤官喜佩印以制伏，生财以化伤……伤官非金水而见官……伤官格败也',
         _always,
-        lambda f: [(RESOURCE + WEALTH, 'favourable', '喜')]
-        + ([] if element_of(f.day_master) == 'metal' else [(OFFICER, 'against', '败')]),
+        lambda f: [rule(RESOURCE + WEALTH, 'favourable', '喜')]
+        + ([] if element_of(f.day_master) == 'metal' else [rule(OFFICER, 'against', '败')]),
     ),
     'yang_blade': LuckCase(
         'general',
         '阳刃喜官煞以制伏，忌官煞之俱无',
         _always,
-        lambda f: [(OFFICERS, 'favourable', '喜')],
+        lambda f: [rule(OFFICERS, 'favourable', '喜')],
     ),
     'jian_lu_yue_jie': LuckCase(
         'general',
         '月劫喜透官以制伏，利用财而透食以化劫',
         _always,
-        lambda f: [(OFFICER, 'favourable', '喜'), (WEALTH + EATING, 'favourable', '利')],
+        lambda f: [rule(OFFICER, 'favourable', '喜'), rule(WEALTH + EATING, 'favourable', '利')],
     ),
 }
 # 论正官取运: wherever the Officer shows, 若官露而不可逢合，不可杂煞，不可重官……皆不利也.
 OFFICER_SHOWN: Final[tuple[str, list[Rule]]] = (
     '若官露而不可逢合，不可杂煞，不可重官。与地支刑冲，不问所就何局，皆不利也。',
-    [(KILLINGS, 'against', '不可杂煞'), (OFFICER, 'against', '不可重官')],
+    [rule(KILLINGS, 'against', '不可杂煞'), rule(OFFICER, 'against', '不可重官')],
 )
 
 
