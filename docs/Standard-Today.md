@@ -93,8 +93,8 @@ the steps, the partner's day, the topics, the chart, Copy link, Copy as text and
 ## In Finnish
 
 The canon's readings are in English only: a Finnish day has none, and the day's page
-shows the pulls' parts. The new Finnish names are provisional. Numbers are written the
-Finnish way.
+shows the pulls' parts. The owner confirmed the Finnish names on 2026-10-11. Numbers
+are written the Finnish way.
 
 ## Copy and print
 
