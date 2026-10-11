@@ -49,6 +49,19 @@ for (const profile of profiles) {
   describe(`${engineName} / ${profile.name} / pointing`, { concurrency: false }, () => {
     const check = (name, run) => it(name, { timeout: 90000 }, () => withPage(profile, run));
 
+    check('a branch card lifted by a pointer at its foot stays lifted, and stops moving', async (page) => {
+      await openChart(page, { lang: 'en' });
+      const card = page.locator('#pillars .card.branch[data-pillar="hour"]');
+      const box = await card.boundingBox();
+      // The card's last row of pixels at rest: lifted 2px, the card itself no longer
+      // covers it.
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height - 1);
+      await page.waitForTimeout(1200);
+      assert.equal(await card.evaluate((node) => node.matches(':hover')), true);
+      assert.deepEqual(await page.evaluate(() => document.getAnimations()
+        .filter((animation) => animation.playState === 'running').map((animation) => animation.transitionProperty)), []);
+    });
+
     if (profile.name === 'desktop') {
       check('a line rings what it names after half a second at rest, the next line at once, and none once left', async (page) => {
         const payload = await openChart(page);

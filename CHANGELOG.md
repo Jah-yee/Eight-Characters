@@ -31,6 +31,11 @@ keeps for it, drawn from the API of 0.48.0 (#67).
   explorer's link passes it on (`docs/api.md`). The form still makes no such link.
 - `?` on Today lists the day's keys, not the chart's.
 
+### Fixed
+- A branch card lifted by a pointer resting at its foot no longer drops and lifts without
+  end: lifted, it still covers the 2px it rose from. Phones' taller bar put WebKit's
+  pointer there in the life grid's keyboard test.
+
 ### Tests
 - `tests/browser/today.test.mjs` and `tests/browser/settings.test.mjs`, in Chromium and
   WebKit, desktop and touch: every number on Today against its field in the API's

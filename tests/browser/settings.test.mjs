@@ -472,6 +472,9 @@ describe(`${engineName} / settings signed out`, { concurrency: false }, () => {
     await page.locator('#settings-close').click();
     await page.locator('#account-btn').click();
     await page.locator('#account-sign-out').click();
+    // The sign-out is answered, and Settings have forgotten the account, before the
+    // change's answer arrives.
+    await page.waitForFunction(() => document.getElementById('settings-place-now').textContent === '');
     deliver();
     await page.waitForFunction(() => document.getElementById('settings-status').textContent === 'Your session ended. Sign in again.');
     // Signed in to another account in the same page, whose settings cannot be read now.

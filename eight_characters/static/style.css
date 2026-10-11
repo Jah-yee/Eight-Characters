@@ -1175,9 +1175,16 @@ body {
   transition: transform 0.3s ease;
 }
 
-/* Only a branch card answers a click (it opens its hidden stems), so only it lifts. */
+/* Only a branch card answers a click (it opens its hidden stems), so only it lifts. Lifted,
+   it still covers the 2px it rose from, so a pointer resting at its foot keeps it lifted
+   rather than dropping and lifting it without end. */
 .card.branch:hover {
   transform: translateY(-2px);
+}
+.card.branch:hover::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 -2px;
 }
 
 /* ── The life grid (life.js): under the chart, its five columns run on through the life,
