@@ -870,7 +870,8 @@ CASES: Final[tuple[tuple[str, Facts, str, dict[str, Verdict]], ...]] = (
         {
             'iwealth': 'favourable',
             'killings': 'against',
-            'eating': 'idle',
+            'eating': 'against',
+            'hurting': 'idle',
             'friend': 'idle',
         },
     ),
@@ -953,6 +954,35 @@ class TestLuckCases(unittest.TestCase):
         )
         _, _, verdicts, _ = luck_reading('direct_officer', facts('乙', '庚'))
         self.assertEqual(verdicts['friend'], 'against')
+
+    def test_a_hurting_officer_using_its_officer_with_wealth_and_resource_strong(
+        self,
+    ) -> None:
+        # 若局中官露而财印两旺，则比劫伤官，未始非吉矣: with Wealth over the Companions and
+        # Resource over the Output, Companions and the Hurting Officer are favourable;
+        # the Eating God stays against (不利食伤).
+        strong = {'iwealth': 300, 'resource': 300, 'friend': 100, 'hurting': 100}
+        _, _, verdicts, words = luck_reading('hurting_officer', facts('庚', '丁', strong))
+        for god in ('friend', 'rob_wealth', 'hurting_officer'):
+            self.assertEqual((verdicts[god], words[god]), ('favourable', '未始非吉'), god)
+        self.assertEqual(verdicts['eating_god'], 'against')
+        weak = {**strong, 'resource': 50}
+        _, _, verdicts, _ = luck_reading('hurting_officer', facts('庚', '丁', weak))
+        self.assertEqual(verdicts['hurting_officer'], 'against')
+        self.assertEqual(verdicts['friend'], 'idle')
+
+    def test_a_jian_lu_officer_guarded_by_resource_fears_its_combination(self) -> None:
+        # 怕官星之逢合: the stem that combines the Officer is against, the Eating God for
+        # a yang Day Master (丙 with 辛 for 甲), the Friend for a yin one (乙 with 庚 for
+        # 乙), while the rest of Output and the Companions do no harm.
+        _, _, verdicts, words = luck_reading('jian_lu_yue_jie', facts('甲', '辛壬'))
+        self.assertEqual(
+            (verdicts['eating_god'], words['eating_god']), ('against', '怕官星之逢合')
+        )
+        self.assertEqual(verdicts['hurting_officer'], 'idle')
+        _, _, verdicts, _ = luck_reading('jian_lu_yue_jie', facts('乙', '庚癸'))
+        self.assertEqual(verdicts['friend'], 'against')
+        self.assertEqual(verdicts['rob_wealth'], 'idle')
 
     def test_every_case_is_tested(self) -> None:
         tested = {(structure, case) for structure, _, case, _ in CASES}

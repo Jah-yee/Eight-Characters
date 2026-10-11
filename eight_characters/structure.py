@@ -367,6 +367,7 @@ def _by_combination(
         'because': None,
     }
 
+
 # ── What a structure favours: its chapter on choosing luck (取运) ──
 
 # The text's verdict on a god a period brings, by its own words (docs/Today.md): most
@@ -380,6 +381,7 @@ VERDICTS: Final[tuple[Verdict, ...]] = (
     'against',
     'strongly_against',
 )
+
 
 def element_of_god(day_master: str, god: TenGodName) -> ElementName:
     own = element_of(day_master)
@@ -1045,10 +1047,19 @@ _HURTING_OFFICER: Final[tuple[LuckCase, ...]] = (
         'officer_metal',
         '伤官用官，运喜财印，不利食伤，若局中官露而财印两旺，则比劫伤官，未始非吉矣。',
         lambda f: f.show(OFFICER) and element_of(f.day_master) == 'metal',
-        lambda f: [
-            rule(WEALTH + RESOURCE, 'favourable', '喜'),
-            rule(OUTPUT, 'against', '不利'),
-        ],
+        # 财印两旺: Wealth outweighs the Companions that would take it, and Resource
+        # the Output that would hurt the Officer.
+        lambda f: (
+            [
+                rule(WEALTH + RESOURCE, 'favourable', '喜'),
+                rule(OUTPUT, 'against', '不利'),
+            ]
+            + (
+                [rule(COMPANIONS + HURTING, 'favourable', '未始非吉')]
+                if f.heavier(WEALTH, COMPANIONS) and f.heavier(RESOURCE, OUTPUT)
+                else []
+            )
+        ),
     ),
 )
 
@@ -1151,11 +1162,14 @@ _JIAN_LU_YUE_JIE: Final[tuple[LuckCase, ...]] = (
         'officer_and_resource',
         '禄劫用官，印护者喜财，怕官星之逢合，畏七煞之相乘。伤食不能为害，劫比未即为凶。',
         lambda f: f.show(OFFICER) and f.show(RESOURCE),
+        # The stem that combines the Officer is feared, though Output and Companions as
+        # such do no harm.
         lambda f: [
             rule(WEALTH, 'favourable', '喜'),
             rule(KILLINGS, 'against', '畏'),
             rule(OUTPUT, 'idle', '不能为害'),
             rule(COMPANIONS, 'idle', '未即为凶'),
+            rule((_combiner_of_officer(f.day_master),), 'against', '怕官星之逢合'),
         ],
     ),
     LuckCase(
