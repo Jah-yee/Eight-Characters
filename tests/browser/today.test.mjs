@@ -766,11 +766,15 @@ for (const profile of profiles) {
       const ny = near.y + near.height / 2;
       await page.mouse.move(nx, ny);
       await page.mouse.down();
-      for (const step of [15, 30, 45]) await page.mouse.move(nx + step, ny + 2);
+      // A capture is taken, and a release applied, at the pointer's next event.
+      const captured = () => page.evaluate(() => document.querySelector('.today-days-track').hasPointerCapture(window.__pointer));
+      for (const step of [15, 30, 45, 46]) await page.mouse.move(nx + step, ny + 2);
       assert.equal(await page.locator('#today-days').getAttribute('class'), 'today-days is-dragging');
-      // Released by the page: the browser applies it at the pointer's next event.
+      assert.equal(await captured(), true);
       await page.evaluate(() => document.querySelector('.today-days-track').releasePointerCapture(window.__pointer));
-      await page.mouse.move(nx + 46, ny + 2);
+      await page.mouse.move(nx + 47, ny + 2);
+      assert.equal(await captured(), false);
+      assert.equal(await page.locator('#today-days').getAttribute('class'), 'today-days');
       await page.mouse.up();
       await page.waitForTimeout(100);
       assert.equal(await part(page, 'day'), run[at + 3].date);
