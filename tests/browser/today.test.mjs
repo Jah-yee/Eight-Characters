@@ -786,6 +786,15 @@ for (const profile of profiles) {
       const releaseStep = hold('2026-10-12');
       await page.locator('#today-who [data-who="partner"]').click();
       await page.waitForFunction(() => new URLSearchParams(location.hash.split('?')[1]).get('who') === 'partner');
+      // Meanwhile a press moved up and down on a neighbour, and let go on it, is still no
+      // press: it picks nothing.
+      const side = await page.locator('.today-day[data-place="1"]').boundingBox();
+      await page.mouse.move(side.x + side.width / 2, side.y + side.height * 0.35);
+      await page.mouse.down();
+      for (const share of [0.45, 0.55, 0.65]) await page.mouse.move(side.x + side.width / 2 + 2, side.y + side.height * share);
+      await page.mouse.up();
+      await page.waitForTimeout(100);
+      assert.equal(await part(page, 'day'), DAY);
       await page.keyboard.press(']');
       await page.waitForFunction(() => new URLSearchParams(location.hash.split('?')[1]).get('day') === '2026-10-12');
       assert.equal(await page.locator('.today-day.is-centre').getAttribute('data-today-pick'), DAY);

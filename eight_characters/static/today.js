@@ -931,8 +931,14 @@
       }
       swallowing = false;
       dropDrag();
-      if (state === null || daysRun === null || event.button !== 0 || event.clientX < 24) return;
-      drag = { id: event.pointerId, x: event.clientX, y: event.clientY, moving: false, still: true, vertical: false };
+      if (event.button !== 0) return;
+      // Every press is followed, so that one that went more than 10px opens nothing; it
+      // drags only while a run is drawn (not while another reading's is on its way), and
+      // not from the screen's left edge.
+      drag = {
+        id: event.pointerId, x: event.clientX, y: event.clientY, moving: false, still: true, vertical: false,
+        drags: state !== null && daysRun !== null && event.clientX >= 24,
+      };
     });
     daysTrack.addEventListener('pointermove', (event) => {
       if (drag === null || event.pointerId !== drag.id || drag.vertical) return;
@@ -945,7 +951,7 @@
           drag.vertical = true;
           return;
         }
-        if (Math.abs(dx) < DRAG) return;
+        if (!drag.drags || Math.abs(dx) < DRAG) return;
         drag.moving = true;
         daysTrack.setPointerCapture(drag.id);
         days.classList.add('is-dragging');

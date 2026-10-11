@@ -12,7 +12,7 @@ The new Today (#80): the day in the chart's own cards and colours (#77, slice 3)
   and a swipe or drag steps by the days it went, asking once when let go; let go within
   40px of its start it moves nothing, and another pointer pressed with it (a touch
   during a mouse's drag too) cancels it, its tap included. A press that went more than
-  10px opens nothing. The days move at
+  10px opens nothing, whether or not it could drag. The days move at
   once only through the run drawn for the chart, language and person shown. Reduced
   motion moves nothing.
 - **The pull as a scale**, from −3.5 to +3.5 for every day and layer, its ends named in
