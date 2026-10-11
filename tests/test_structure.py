@@ -962,9 +962,13 @@ class TestLuckCases(unittest.TestCase):
         # Resource over the Output, Companions and the Hurting Officer are favourable;
         # the Eating God stays against (不利食伤).
         strong = {'iwealth': 300, 'resource': 300, 'friend': 100, 'hurting': 100}
-        _, _, verdicts, words = luck_reading('hurting_officer', facts('庚', '丁', strong))
+        _, _, verdicts, words = luck_reading(
+            'hurting_officer', facts('庚', '丁', strong)
+        )
         for god in ('friend', 'rob_wealth', 'hurting_officer'):
-            self.assertEqual((verdicts[god], words[god]), ('favourable', '未始非吉'), god)
+            self.assertEqual(
+                (verdicts[god], words[god]), ('favourable', '未始非吉'), god
+            )
         self.assertEqual(verdicts['eating_god'], 'against')
         weak = {**strong, 'resource': 50}
         _, _, verdicts, _ = luck_reading('hurting_officer', facts('庚', '丁', weak))
