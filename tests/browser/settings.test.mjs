@@ -137,6 +137,40 @@ for (const profile of profiles) {
       assert.equal(await page.locator('#settings-view').getAttribute('aria-busy'), null);
     });
 
+    check('a partner read elsewhere since Settings were drawn is not removed from their old controls', async (page) => {
+      await reset(page);
+      const partner = (name) => ({ name, date: '1975-08-14', time: '07:45', place: PLACE, gender: 'female', zi: 'split_midnight' });
+      await changeElsewhere(page, 'PUT', '/api/account/partner', partner('First'));
+      await openLink(page, chartLink(), { place: HELSINKI });
+      const to = (hash) => page.evaluate((hash) => {
+        history.pushState(null, '', hash);
+        dispatchEvent(new PopStateEvent('popstate'));
+      }, hash);
+      await to('#settings');
+      await page.locator('#settings-view').waitFor({ state: 'visible' });
+      await page.waitForFunction(() => !document.getElementById('settings-view').hasAttribute('aria-busy'));
+      assert.equal(await page.locator('.settings-partner-name').textContent(), 'First');
+      // Back on the chart, whose bar reads the settings: another partner was saved elsewhere.
+      await page.goBack();
+      await page.locator('#chart-view').waitFor({ state: 'visible' });
+      await changeElsewhere(page, 'PUT', '/api/account/partner', partner('Replacement'));
+      await page.locator('#save-partner-btn').click();
+      await page.locator('#partner-dialog').waitFor({ state: 'visible' });
+      assert.match(await page.locator('#partner-dialog-replaces').textContent(), /Replacement/);
+      await page.locator('#partner-cancel').click();
+      // Settings opened again cannot read the settings: the old controls are still there.
+      const refuse = (route) => route.fulfill({ status: 500, json: { detail: 'Stopped by the test.' } });
+      await page.route('**/api/account/settings', refuse);
+      await to('#settings');
+      await page.locator('#settings-status').waitFor({ state: 'visible' });
+      assert.equal(await page.locator('.settings-partner-name').textContent(), 'First');
+      await page.locator('[data-settings-action="remove"]').click();
+      await page.waitForFunction(() => document.getElementById('settings-status').textContent.includes('changed elsewhere'));
+      await page.unroute('**/api/account/settings', refuse);
+      assert.equal((await read(page)).partner.name, 'Replacement', 'the partner not shown was not removed');
+      assert.equal(await page.locator('.settings-partner-name').textContent(), 'Replacement');
+    });
+
     check('a place picked while the one before is saved stays picked', async (page) => {
       await reset(page);
       await page.route('**/api/location_suggest', (route) => route.fulfill({ json: { suggestions: [HELSINKI, TROMSO] } }));

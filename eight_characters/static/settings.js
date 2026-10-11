@@ -50,6 +50,10 @@
     let basis = 0;
     let replaced = '';
     let generation = 0;
+    // The basis of the settings last drawn here: a change from this page's controls is
+    // made from them, so settings read meanwhile by Today or a chart's bar (another
+    // partner saved elsewhere, say) replace them, and the change is not made.
+    let drawnBasis = -1;
     // Changes still waiting: the page is drawn once the last of them has its answer.
     let waiting = 0;
 
@@ -137,12 +141,11 @@
       onChanged(settings);
       return why;
     };
-    // A change, made from the settings on screen: null once the API has made it, or why
-    // it was not made. Refused because the settings changed elsewhere, because the
+    // A change, made from the settings of basis `from`: null once the API has made it, or
+    // why it was not made. Refused because the settings changed elsewhere, because the
     // session ended or because another account is signed in now, the settings are read
     // again and drawn, and the change is not repeated: the reader decides again.
-    const write = (method, path, body) => {
-      const from = basis;
+    const write = (method, path, body, from) => {
       waiting += 1;
       return inTurn(async () => {
         // A sign-out while the change is on its way: its answer is the account's before,
@@ -189,7 +192,7 @@
     const change = async (method, path, body, done) => {
       let problem;
       try {
-        problem = await write(method, path, body);
+        problem = await write(method, path, body, drawnBasis);
       } catch (err) {
         console.error(err);
         problem = err.message || t('settings_load_error');
@@ -448,6 +451,7 @@
       drawPartner();
       drawPlace();
       if (catalog !== null) drawSchools();
+      drawnBasis = basis;
       if (focused === null || focusable(focused)) return;
       const found = counterpart === null ? null : view.querySelector(counterpart);
       const next = found !== null && focusable(found) ? found : [...(part?.querySelectorAll('button, input') ?? [])].find(focusable);
@@ -487,7 +491,8 @@
 
     // Keeps a birth as the partner's chart, as a chart's bar asks (app.js): null once
     // kept, or why not.
-    const savePartner = async (birth) => write('PUT', '/api/account/partner', birth);
+    // The dialog has just read the settings (app.js): the change is made from them.
+    const savePartner = async (birth) => write('PUT', '/api/account/partner', birth, basis);
 
     return {
       show,
