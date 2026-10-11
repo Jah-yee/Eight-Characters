@@ -932,7 +932,8 @@ def settings_view(user: User, settings: Settings | None) -> SettingsView:
         ],
         'my_chart': settings.my_chart,
         'couples': [
-            {'id': couple.id, 'charts': list(couple.charts)} for couple in settings.couples
+            {'id': couple.id, 'charts': list(couple.charts)}
+            for couple in settings.couples
         ],
         'pending_partner': settings.pending_partner,
         'place': None if settings.place is None else place_value(settings.place),
@@ -1018,7 +1019,9 @@ def change_chart(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _changed(
         user,
-        lambda: accounts.store.update_chart(user.id, chart_id, birth, payload.updated_at),
+        lambda: accounts.store.update_chart(
+            user.id, chart_id, birth, payload.updated_at
+        ),
     )
 
 

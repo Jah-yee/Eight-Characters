@@ -14,7 +14,7 @@ import json
 import math
 import re
 import secrets
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Final, Literal, TypeGuard, cast
 
@@ -79,9 +79,19 @@ _FIELDS_BY_SCHEMA: Final = {
     3: _USER_FIELDS | {'settings'},
 }
 # Settings as schema 2 records kept them, with one partner's chart.
-_PARTNER_SETTINGS_FIELDS: Final = frozenset({'partner', 'place', 'schools', 'updated_at'})
+_PARTNER_SETTINGS_FIELDS: Final = frozenset(
+    {'partner', 'place', 'schools', 'updated_at'}
+)
 _SETTINGS_FIELDS: Final = frozenset(
-    {'charts', 'couples', 'my_chart', 'pending_partner', 'place', 'schools', 'updated_at'}
+    {
+        'charts',
+        'couples',
+        'my_chart',
+        'pending_partner',
+        'place',
+        'schools',
+        'updated_at',
+    }
 )
 _CHART_FIELDS: Final = frozenset({'birth', 'id'})
 _COUPLE_FIELDS: Final = frozenset({'charts', 'id'})
@@ -400,7 +410,7 @@ class Settings:
         ):
             raise RecordError(
                 'A partner waits for a couple only as a saved chart, and only while '
-                'no chart is marked as the person\'s own.'
+                "no chart is marked as the person's own."
             )
 
     def chart(self, chart_id: str) -> SavedChart | None:
@@ -577,34 +587,46 @@ def _id(value: object, what: str) -> str:
 def partner_chart_id(partner: object) -> str:
     """The id a schema 2 partner's chart is kept under: the same for the same chart
     every time it is read, so the library names it the same until it is written."""
-    return hashlib.sha256(b'partner\n' + canonical_json(cast(dict[str, Any], partner))).hexdigest()[:32]
+    return hashlib.sha256(
+        b'partner\n' + canonical_json(cast(dict[str, Any], partner))
+    ).hexdigest()[:32]
+
+
+def _partner_settings_from(value: object) -> Settings | None:
+    """Settings as accounts kept them before they kept charts, with their partner's
+    chart read as a saved chart waiting to pair with the person's own; None for any
+    other shape."""
+    if not _kept_with_a_partner(value):
+        return None
+    record = cast(dict[str, Any], value)
+    partner: object = record['partner']
+    held: object = record['place']
+    charts: tuple[SavedChart, ...] = ()
+    if partner is not None:
+        charts = (
+            SavedChart(
+                id=partner_chart_id(partner),
+                birth=_birth_from(partner, "A partner's chart"),
+            ),
+        )
+    return Settings(
+        charts=charts,
+        my_chart=None,
+        couples=(),
+        pending_partner=charts[0].id if charts else None,
+        place=None if held is None else _place_from(held, 'Where you are'),
+        schools=_chosen_from(record['schools']),
+        updated_at=_text(record, 'updated_at', 'The settings'),
+    )
 
 
 def settings_from(value: object) -> Settings:
     """The settings a record's JSON value holds, every part checked. Settings kept
     before accounts kept charts read their partner's chart as a saved chart, waiting to
     pair with the person's own."""
-    if isinstance(value, dict) and frozenset(cast(dict[str, Any], value)) == _PARTNER_SETTINGS_FIELDS:
-        record = cast(dict[str, Any], value)
-        partner: object = record['partner']
-        held: object = record['place']
-        charts: tuple[SavedChart, ...] = ()
-        if partner is not None:
-            charts = (
-                SavedChart(
-                    id=partner_chart_id(partner),
-                    birth=_birth_from(partner, "A partner's chart"),
-                ),
-            )
-        return Settings(
-            charts=charts,
-            my_chart=None,
-            couples=(),
-            pending_partner=charts[0].id if charts else None,
-            place=None if held is None else _place_from(held, 'Where you are'),
-            schools=_chosen_from(record['schools']),
-            updated_at=_text(record, 'updated_at', 'The settings'),
-        )
+    kept = _partner_settings_from(value)
+    if kept is not None:
+        return kept
     record = _fields(value, 'The settings', _SETTINGS_FIELDS)
     charts = tuple(
         SavedChart(
@@ -625,7 +647,10 @@ def settings_from(value: object) -> Settings:
         couples.append(
             Couple(
                 id=_id(item['id'], 'A couple id'),
-                charts=(_id(members[0], 'A couple chart'), _id(members[1], 'A couple chart')),
+                charts=(
+                    _id(members[0], 'A couple chart'),
+                    _id(members[1], 'A couple chart'),
+                ),
             )
         )
     mine: object = record['my_chart']
@@ -635,7 +660,9 @@ def settings_from(value: object) -> Settings:
         charts=charts,
         my_chart=None if mine is None else _id(mine, 'My chart'),
         couples=tuple(couples),
-        pending_partner=None if pending is None else _id(pending, 'The pending partner'),
+        pending_partner=None
+        if pending is None
+        else _id(pending, 'The pending partner'),
         place=None if held is None else _place_from(held, 'Where you are'),
         schools=_chosen_from(record['schools']),
         updated_at=_text(record, 'updated_at', 'The settings'),
@@ -643,7 +670,11 @@ def settings_from(value: object) -> Settings:
 
 
 def _kept_with_a_partner(value: object) -> bool:
-    return isinstance(value, dict) and frozenset(cast(dict[str, Any], value)) == _PARTNER_SETTINGS_FIELDS
+    """The shape settings had before accounts kept charts."""
+    return (
+        isinstance(value, dict)
+        and frozenset(cast(dict[str, Any], value)) == _PARTNER_SETTINGS_FIELDS
+    )
 
 
 def decode_settings(data: bytes) -> Settings:

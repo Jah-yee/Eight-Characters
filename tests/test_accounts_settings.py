@@ -211,7 +211,8 @@ class TestSettingsRecords(unittest.TestCase):
             'a chart id that is not one': lambda: SavedChart('x', BIRTH),
             'a couple of one chart': lambda: Couple(COUPLE_ID, (MINE_ID, MINE_ID)),
             'two charts with one id': lambda: replace(
-                SETTINGS, charts=(SavedChart(MINE_ID, BIRTH), SavedChart(MINE_ID, PARTNER))
+                SETTINGS,
+                charts=(SavedChart(MINE_ID, BIRTH), SavedChart(MINE_ID, PARTNER)),
             ),
             'my chart not kept': lambda: replace(SETTINGS, my_chart='4' * 32),
             'a couple of a chart not kept': lambda: replace(
@@ -395,7 +396,9 @@ class TestSettingsRecords(unittest.TestCase):
         user, settings = decode_user(canonical_json(old))
         self.assertEqual(user, USER)
         assert settings is not None
-        self.assertEqual(settings.pending_partner, partner_chart_id(PARTNER_SETTINGS['partner']))
+        self.assertEqual(
+            settings.pending_partner, partner_chart_id(PARTNER_SETTINGS['partner'])
+        )
         # A schema 2 record holds the settings it was written with, and a schema 3
         # record today's.
         with self.assertRaises(RecordError):
@@ -1089,7 +1092,12 @@ class TestSettingsApi(unittest.TestCase):
         )
         unknown = '4' * 32
         refused: list[tuple[int, str, str, dict[str, Any]]] = [
-            (404, 'PUT', f'/api/account/charts/{unknown}', _birth_json(BIRTH, self.key)),
+            (
+                404,
+                'PUT',
+                f'/api/account/charts/{unknown}',
+                _birth_json(BIRTH, self.key),
+            ),
             (404, 'DELETE', f'/api/account/charts/{unknown}', {'key': self.key}),
             (404, 'PUT', '/api/account/my-chart', {'key': self.key, 'chart': unknown}),
             (

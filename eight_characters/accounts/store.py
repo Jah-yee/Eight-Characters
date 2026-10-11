@@ -688,7 +688,9 @@ class AccountStore:
         def save(settings: Settings) -> Settings:
             if len(settings.charts) >= CHART_LIMIT:
                 raise ChartLimit(f'An account keeps at most {CHART_LIMIT} charts.')
-            return replace(settings, charts=(*settings.charts, SavedChart(chart_id, birth)))
+            return replace(
+                settings, charts=(*settings.charts, SavedChart(chart_id, birth))
+            )
 
         return self._update_settings(user_id, read, save), chart_id
 
@@ -721,9 +723,13 @@ class AccountStore:
             _saved(settings, chart_id)
             return replace(
                 settings,
-                charts=tuple(chart for chart in settings.charts if chart.id != chart_id),
+                charts=tuple(
+                    chart for chart in settings.charts if chart.id != chart_id
+                ),
                 couples=tuple(
-                    couple for couple in settings.couples if chart_id not in couple.charts
+                    couple
+                    for couple in settings.couples
+                    if chart_id not in couple.charts
                 ),
                 my_chart=None if settings.my_chart == chart_id else settings.my_chart,
                 pending_partner=None
@@ -772,7 +778,9 @@ class AccountStore:
                 _saved(settings, chart_id)
                 if settings.couple_of(chart_id) is not None:
                     raise CoupleLimit('A chart is in one couple at most.')
-            return replace(settings, couples=(*settings.couples, Couple(new_id(), charts)))
+            return replace(
+                settings, couples=(*settings.couples, Couple(new_id(), charts))
+            )
 
         return self._update_settings(user_id, read, pair)
 
