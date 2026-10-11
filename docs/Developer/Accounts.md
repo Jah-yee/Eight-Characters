@@ -124,7 +124,7 @@ so the database alone cannot be used to test guesses or take over a session.
 | `DELETE /api/account/sessions` | signs the account out everywhere; `{"key": …}` names it | `204`; `400`, `401`, `409` |
 | `POST /api/account/export` | everything kept for the account (`{"key": …}` names it), as `bazi-account.json`: its record, its sessions and a pending sign-in code (when made and when they end, without hashes), and the codes asked for in the last hour with the client addresses they came from | `200`; `400`, `401`, `409` |
 | `DELETE /api/account` | deletes the account, its sessions and its sign-in code; `{"email": …, "key": …}`: `key` names it, and `email` repeats its address. The codes asked for stay until an hour old, so the hourly limits hold | `204`; `400`, `401`, `409` |
-| `GET /api/account/settings` | your saved charts (each with its `id` and its four pillars, or `pillars: null` and the reason in `problem` if the engine no longer charts it), `my_chart`, `couples`, `pending_partner`, where you are, the schools Today follows and the ones chosen (`null`: the default), `updated_at` (`null` before anything is set) and the account's `key` | `200`; `401` |
+| `GET /api/account/settings` | your saved charts (each with its `id` and its four pillars, or `pillars: null` and the reason in `problem` if the engine no longer charts it), `my_chart`, `couples`, `pending_partner`, `chart_limit` (how many charts the account keeps at most), where you are, the schools Today follows and the ones chosen (`null`: the default), `updated_at` (`null` before anything is set) and the account's `key` | `200`; `401` |
 | `POST /api/account/charts` | saves a birth: `{key, updated_at, name?, date, time, place: {name, city, timezone, latitude, longitude}, fold?, gender, zi?, mine?, couple_with?}`, checked by the first chart's rules and charted first. `mine` marks it as your own and `couple_with` (a saved chart's id) pairs it, in the same write | `201`, the settings and `saved` (the new id); `400` (a malformed birth, a time the clocks skipped or repeated without `fold`, a full library, a birth saved already, a partner already in a couple), `401`, `403`, `404` (no such partner), `409`, `412` |
 | `PUT /api/account/charts/{id}` | corrects a saved chart's birth, charted first; it keeps its id, its mark and its couple | `200` and the settings; `400`, `401`, `403`, `404`, `409`, `412` |
 | `PUT /api/account/charts/{id}/name` | renames a saved chart (`{key, updated_at, name}`, `null` for none) without charting it again | `200` and the settings; `400`, `401`, `403`, `404`, `409`, `412` |
@@ -200,7 +200,11 @@ put on one.
   The page takes who is signed in from the newest of these, and an answer older than
   what it has taken changes nothing, however late it comes. Another account, signed in
   to in another tab, is taken as a sign-in here, with its language, and a dialog asking
-  for a sign-in closes, signed in to it. Of one account, the page keeps the language
+  for a sign-in closes, signed in to it. Nothing read for the account before stays on
+  the page: Settings forget it (a read or change answered after is not taken, and says
+  the account changed), the library and the save dialog close, a birth being added or
+  corrected is let go, and Settings, Today, the chart's name and a landing on your
+  chart are read again for the account taken. Of one account, the page keeps the language
   and plan of the later change, from any answer (the newest or not, and one for a chart
   or comparison no longer wanted too): every change moves
   the account's `updated_at` past the last (by a second, within one second or with the

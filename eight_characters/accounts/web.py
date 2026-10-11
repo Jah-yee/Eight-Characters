@@ -40,6 +40,7 @@ from eight_characters.accounts.person_check import (
     Turnstile,
 )
 from eight_characters.accounts.records import (
+    CHART_LIMIT,
     DEFAULT_SCHOOLS,
     NO_CHOICE,
     Birth,
@@ -658,6 +659,8 @@ class SettingsView(TypedDict):
     # A partner's chart kept from before accounts kept charts: it pairs with the
     # person's own chart when one is first marked.
     pending_partner: str | None
+    # How many charts the account keeps at most.
+    chart_limit: int
     place: dict[str, Any] | None
     # The school Today follows for each setting, and the one chosen: None where the
     # account follows the default.
@@ -967,6 +970,7 @@ def settings_view(user: User, settings: Settings | None) -> SettingsView:
             'my_chart': None,
             'couples': [],
             'pending_partner': None,
+            'chart_limit': CHART_LIMIT,
             'place': None,
             'schools': _schools_view(DEFAULT_SCHOOLS),
             'chosen': _chosen_view(NO_CHOICE),
@@ -983,6 +987,7 @@ def settings_view(user: User, settings: Settings | None) -> SettingsView:
             for couple in settings.couples
         ],
         'pending_partner': settings.pending_partner,
+        'chart_limit': CHART_LIMIT,
         'place': None if settings.place is None else place_value(settings.place),
         'schools': _schools_view(settings.schools.effective()),
         'chosen': _chosen_view(settings.schools),

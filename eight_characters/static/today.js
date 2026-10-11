@@ -553,6 +553,24 @@
       view.classList.add('hidden');
       view.removeAttribute('aria-busy');
     };
+    // Nothing of the settings read for the account, nor of the day drawn with them, is
+    // left on the page.
+    const clear = () => {
+      shownSettings = null;
+      answer = null;
+      ready(false);
+      dateHeading.textContent = '';
+      chartLine.textContent = '';
+      partnerLabel.textContent = '';
+      whoSwitch.classList.add('hidden');
+      clearNotice();
+      body.classList.add('hidden');
+      for (const part of [pullLine, topics, run, pillars, inChart, hours]) part.replaceChildren();
+      panel.classList.add('hidden');
+      view.classList.remove('has-panel');
+      detail.replaceChildren();
+      status.textContent = '';
+    };
 
     // ── The controls ──
     steps.addEventListener('click', (event) => {
@@ -687,18 +705,16 @@
       // on the page.
       forget: () => {
         hide();
-        shownSettings = null;
-        dateHeading.textContent = '';
-        chartLine.textContent = '';
-        partnerLabel.textContent = '';
-        whoSwitch.classList.add('hidden');
-        clearNotice();
-        body.classList.add('hidden');
-        for (const part of [pullLine, topics, run, pillars, inChart, hours]) part.replaceChildren();
-        panel.classList.add('hidden');
-        view.classList.remove('has-panel');
-        detail.replaceChildren();
-        status.textContent = '';
+        clear();
+      },
+      // Another account taken in this browser: the day drawn with the settings of the one
+      // before (its place, its schools, its couple) goes, shown or hidden, so that Today
+      // opened again draws nothing of it; shown, the day is asked for again with this
+      // account's.
+      renew: () => {
+        const next = state;
+        keepingFocus(clear);
+        if (next !== null) show(next);
       },
       // Settings changed: the day is asked for again with them.
       refresh: () => {

@@ -25,7 +25,7 @@
     503: 'account_check_down',
   };
 
-  const create = ({ dialog, button, state, translate: t, language, embedded, onLanguage, onSignedIn, onSignedOut }) => {
+  const create = ({ dialog, button, state, translate: t, language, embedded, onLanguage, onSignedIn, onAccountChanged, onSignedOut }) => {
     if (!dialog || !button) throw new Error('The account dialog or its button is missing.');
     const part = (id) => {
       const element = dialog.querySelector(`#${id}`);
@@ -466,6 +466,8 @@
         // A deletion begun for the account held before is not carried over to this one.
         closeDeleting();
         onLanguage(account.language);
+        // Nothing the page read for the account held before is shown for this one.
+        onAccountChanged();
       }
       if (another && dialog.open && step !== 'menu') closeSignedIn();
       else refresh();

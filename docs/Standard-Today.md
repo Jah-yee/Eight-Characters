@@ -78,7 +78,9 @@ The chart, from Today's bar or its commands, opens in the language the day is sh
 A link opened signed out asks for a sign-in, and the day is then shown in the account's
 language, which its address then names; a session that ends while the day is open asks
 for a sign-in when the day is next asked for. A sign-out leaves nothing of the account's
-day on the page: neither where you are nor a partner's name. Marriage, open when the couple ends
+day on the page: neither where you are nor a partner's name. Another account, signed in
+to in another tab and taken here, has the day read again with its settings, and nothing
+of the day read with the account before stays. Marriage, open when the couple ends
 elsewhere (or the partner's chart no longer charts), closes, and the page says why.
 
 ## Keys and commands

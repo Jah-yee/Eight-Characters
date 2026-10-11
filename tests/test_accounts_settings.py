@@ -1063,6 +1063,7 @@ class TestSettingsApi(unittest.TestCase):
                 'my_chart': None,
                 'couples': [],
                 'pending_partner': None,
+                'chart_limit': CHART_LIMIT,
                 'place': None,
                 'schools': {
                     'favourable': 'support',
@@ -1315,6 +1316,11 @@ class TestSettingsApi(unittest.TestCase):
     def test_a_full_library_saves_no_more(self) -> None:
         for number in range(CHART_LIMIT):
             self.accounts.store.save_chart(self.user.id, born(number), self.read())
+        # The settings say how many charts the account keeps, so a page can say the
+        # library is full before it asks.
+        kept = self.client.get('/api/account/settings').json()
+        self.assertEqual(kept['chart_limit'], CHART_LIMIT)
+        self.assertEqual(len(kept['charts']), CHART_LIMIT)
         reply = self.write('POST', '/api/account/charts', _birth_json(BIRTH, self.key))
         self.assertEqual(reply.status_code, 400, reply.text)
         self.assertEqual(
