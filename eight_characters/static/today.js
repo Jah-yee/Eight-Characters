@@ -899,9 +899,10 @@
     // A swipe or drag on the days moves them with the pointer that started it, once it
     // has gone 40px across (more than a touch hold's 10px), and not from the screen's left
     // edge, which is iOS's Back. Let go, the day steps by as many days as it went, one at
-    // least. Vertical scrolling stays the page's (touch-action: pan-y). A press that went
-    // more than 10px, a drag's or not, is no press: the click that ends it opens nothing.
-    // A cancel, a lost capture or a second pointer moves nothing.
+    // least; let go within 40px of where it started, it moves nothing. Vertical scrolling
+    // stays the page's (touch-action: pan-y). A press that went more than 10px, a drag's or
+    // not, is no press: the click that ends it opens nothing. A cancel, a lost capture or
+    // another pointer (a touch during a mouse's drag too) moves nothing.
     let drag = null;
     let swallowing = false;
     // The click that ends a gesture comes in the same task as its pointerup.
@@ -918,11 +919,12 @@
     };
     daysTrack.addEventListener('pointerdown', (event) => {
       if (drag !== null) {
-        // A second finger while one drags: neither moves the days. A primary pointer
-        // pressed while one is kept was let go where the days did not see it (a mouse let
-        // go off them before its drag began): its press starts anew.
+        // Another pointer while one is pressed, of any kind: neither moves the days. The
+        // same pointer pressed again was let go where its release was not seen (outside
+        // the window): its press starts anew.
+        const again = event.pointerId === drag.id;
         dropDrag();
-        if (!event.isPrimary) return;
+        if (!again) return;
       }
       if (state === null || daysRun === null || event.button !== 0 || event.clientX < 24) return;
       drag = { id: event.pointerId, x: event.clientX, y: event.clientY, dx: 0, moving: false, still: true, vertical: false };
@@ -948,10 +950,11 @@
     });
     daysTrack.addEventListener('pointerup', (event) => {
       if (drag === null || event.pointerId !== drag.id) return;
-      const { dx, moving, still } = drag;
+      const { moving, still } = drag;
+      const dx = event.clientX - drag.x;
       dropDrag();
       if (!still) swallowClick();
-      if (!moving || state === null) return;
+      if (!moving || Math.abs(dx) < DRAG || state === null) return;
       const width = dayNodes.get(state.day)?.getBoundingClientRect().width || 1;
       const by = Math.max(1, Math.round(Math.abs(dx) / width)) * (dx < 0 ? 1 : -1);
       const day = stepped(by);
@@ -959,6 +962,12 @@
     });
     for (const type of ['pointercancel', 'lostpointercapture']) {
       daysTrack.addEventListener(type, (event) => {
+        if (drag !== null && event.pointerId === drag.id) dropDrag();
+      });
+    }
+    // Let go off the days (a mouse beside them, before its drag began), a press ends there.
+    for (const type of ['pointerup', 'pointercancel']) {
+      window.addEventListener(type, (event) => {
         if (drag !== null && event.pointerId === drag.id) dropDrag();
       });
     }

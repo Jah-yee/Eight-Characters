@@ -707,6 +707,26 @@ for (const profile of profiles) {
       await page.waitForTimeout(100);
       assert.equal(await part(page, 'day'), stay);
       assert.equal(await page.locator('#today-days').getAttribute('class'), 'today-days');
+      // Taken past 40px and brought back to where it started: nothing moves.
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      for (const step of [20, 60, 120, 60, 5]) await page.mouse.move(x - step, y + 3);
+      await page.mouse.up();
+      await page.waitForTimeout(100);
+      assert.equal(await part(page, 'day'), stay);
+      // A touch while the mouse drags: neither moves the days, the touch neither.
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      await page.mouse.move(x - 80, y);
+      const touch = { pointerId: 7, pointerType: 'touch', isPrimary: true, button: 0, buttons: 1, clientX: x, clientY: y };
+      await page.locator('.today-days-track').dispatchEvent('pointerdown', touch);
+      await page.locator('.today-days-track').dispatchEvent('pointermove', { ...touch, clientX: x - 200 });
+      await page.locator('.today-days-track').dispatchEvent('pointerup', { ...touch, clientX: x - 200, buttons: 0 });
+      await page.mouse.move(x - 200, y);
+      await page.mouse.up();
+      await page.waitForTimeout(100);
+      assert.equal(await part(page, 'day'), stay);
+      assert.equal(answers.length, asked + 1, 'nothing asked since the first drag');
       // Up and down on a neighbour, and let go on it: a press that went more than 10px is
       // no press, so the neighbour is not picked.
       const side = await page.locator('.today-day[data-place="1"]').boundingBox();

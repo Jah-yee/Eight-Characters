@@ -9,9 +9,11 @@ The new Today (#80): the day in the chart's own cards and colours (#77, slice 3)
   its own element's colours, with its pinyin, its trigram or hexagram and its name),
   two days of the run on either side, smaller, one on a phone. Left and Right step
   while they have focus, Home and End go to the run's ends, a press picks a neighbour,
-  and a swipe or drag steps by the days it went, asking once when let go; a press that
-  went more than 10px opens nothing. The days move at once only through the run drawn
-  for the chart, language and person shown. Reduced motion moves nothing.
+  and a swipe or drag steps by the days it went, asking once when let go; let go within
+  40px of its start it moves nothing, and another pointer (a touch during a mouse's drag
+  too) cancels it. A press that went more than 10px opens nothing. The days move at
+  once only through the run drawn for the chart, language and person shown. Reduced
+  motion moves nothing.
 - **The pull as a scale**, from −3.5 to +3.5 for every day and layer, its ends named in
   words by the chart's useful and unfavourable elements, with the five gods.
 - **The couple**: both pulls of the day on one neutral scale, and whether the day pulls
@@ -42,9 +44,10 @@ The new Today (#80): the day in the chart's own cards and colours (#77, slice 3)
   malformed instead of drawn.
 
 ### Tests
-- `today.test.mjs`: the days (press, keys, a held key, drag, cancel, a press moved up
-  and down, a mouse let go off the days, reduced motion, Apia's skipped day, a drag
-  past the run's end, another person's day on its way), the scale, In your chart's
+- `today.test.mjs`: the days (press, keys, a held key, drag, cancel, a drag brought
+  back, a touch during a mouse's drag, a press moved up and down, a mouse let go off
+  the days, reduced motion, Apia's skipped day, a drag past the run's end, another
+  person's day on its way), the scale, In your chart's
   pillars, the dial and the table's hour now, the clock moving on, the couple, the
   five gods in Copy as text, print while a day is on its way, an answer that cannot be
   drawn.

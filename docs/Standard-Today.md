@@ -100,11 +100,13 @@ days wait for that answer, and a step until then is a calendar day.
 
 A drag follows the pointer that started it, once it has gone 40px across (more than a
 touch hold's 10px), and never from the screen's left edge, which is iOS's Back. Let go,
-the day moves by as many days as it went, one at least; less than 40px moves nothing.
+the day moves by as many days as it went, one at least; let go less than 40px from where
+it started, even after going further, it moves nothing.
 Up and down stays the page's scrolling. A press that went more than 10px, up and down
 included, is no press: the click that ends it opens nothing. A cancel, a lost capture
-or a second pointer moves nothing; a mouse let go off the days before its drag began
-leaves the next drag as it would be. A step slides the days in
+or another pointer, of any kind (a touch during a mouse's drag too), moves nothing; a
+mouse let go off the days before its drag began leaves the next drag as it would be. A
+step slides the days in
 280ms; a pick far away slides one step's distance, never through the days between.
 With reduced motion, the days change in place.
 
