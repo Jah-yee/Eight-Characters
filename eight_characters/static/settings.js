@@ -405,7 +405,8 @@
             say(t('settings_pair_same'), true);
             break;
           }
-          await once(`pair ${first} ${second}`, () => change('POST', '/api/account/couples', { charts: [first, second] }, t('settings_paired')));
+          // A couple is the same whichever chart is chosen first.
+          await once(`pair ${[first, second].sort().join(' ')}`, () => change('POST', '/api/account/couples', { charts: [first, second] }, t('settings_paired')));
           break;
         }
         case 'add-partner': {

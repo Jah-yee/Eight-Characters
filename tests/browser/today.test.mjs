@@ -688,15 +688,16 @@ describe(`${engineName} / today and the session`, { concurrency: false }, () => 
     await dialogOpens(page);
     await page.locator('#account-who').filter({ hasText: second.email }).waitFor();
     await page.keyboard.press('Escape');
-    // Today again, its settings held on their way: nothing of the first account is drawn
+    // Today again. Chart · Today reads the settings for the date where you are; the
+    // day's own read of them is held on its way: nothing of the first account is drawn
     // meanwhile.
     let release;
     const held = new Promise((resolve) => { release = resolve; });
-    let holding = true;
+    let reads = 0;
     await page.route('**/api/account/settings', async (route) => {
-      if (holding && route.request().method() === 'GET') {
-        holding = false;
-        await held;
+      if (route.request().method() === 'GET') {
+        reads += 1;
+        if (reads === 2) await held;
       }
       await route.fallback();
     });

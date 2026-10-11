@@ -532,6 +532,10 @@ for (const profile of profiles) {
       const pair = page.locator('#settings-couples-body [data-settings-action="pair"]');
       await pair.click();
       await pair.click();
+      // The same couple, chosen the other way round, is the same change.
+      await page.locator('#settings-pair-first').selectOption(second);
+      await page.locator('#settings-pair-second').selectOption(first);
+      await pair.click();
       release();
       await page.locator('#settings-couples-body .couple-card').waitFor();
       await page.waitForLoadState('networkidle');
@@ -731,16 +735,17 @@ for (const profile of profiles) {
         await page.locator('#create-chart-btn').click();
         await drawn();
       };
-      // A link opened while a chart is on screen: that chart takes no clicks until the
-      // link's own is drawn, which its heading then names.
+      // A link opened as in the address bar. While a chart is on screen, it takes no
+      // clicks until the link's own is drawn, which its heading then names. (Not
+      // openLink: its check of each chart request refuses a pass, and a refusal.)
       const opened = async (link, year) => {
-        await openLink(page, link, { place: HELSINKI });
+        await page.goto(new URL(link, process.env.EC_BASE_URL).href);
         await page.waitForFunction((year) => document.getElementById('chart-date').textContent.includes(year), year);
         await drawn();
       };
       // Summer clock 00:50 in Helsinki is true solar 23:29 the evening before: under the
       // whole Zi hour from 23:00, the day is the next one.
-      await openLink(page, chartLink({ date: '2021-06-15', time: '00:50', zi: 'whole_zi_23' }), { place: HELSINKI });
+      await opened(chartLink({ date: '2021-06-15', time: '00:50', zi: 'whole_zi_23' }), '2021');
       const before = await dayStem();
       await remade();
       assert.equal(asked.at(-1).conventions?.zi_convention, 'whole_zi_23');
@@ -773,7 +778,8 @@ for (const profile of profiles) {
       // skipped) leaves its own birth in the form: corrected, it is made as that link's
       // chart, not with the convention of the chart shown before it.
       await opened(chartLink({ date: '2021-06-15', time: '00:50', zi: 'whole_zi_23' }), '2021');
-      await openLink(page, chartLink({ date: '2021-03-28', time: '03:30' }), { place: HELSINKI, success: false });
+      await page.goto(new URL(chartLink({ date: '2021-03-28', time: '03:30' }), process.env.EC_BASE_URL).href);
+      await page.locator('#form-error').waitFor({ state: 'visible' });
       await page.locator('#time').fill('12:00');
       await page.locator('#create-chart-btn').click();
       await drawn();
@@ -957,8 +963,9 @@ describe(`${engineName} / settings signed out`, { concurrency: false }, () => {
     // the first, is refused, and the page takes the second.
     await page.context().addCookies(second.cookies);
     await page.locator('#settings-favourable-climate').click();
-    await page.waitForFunction(() => document.getElementById('settings-status').textContent === 'This browser is signed in to another account now.');
-    assert.match(await page.locator('#settings-charts-body').textContent(), /Second keeps/);
+    await page.waitForFunction(() => document.getElementById('settings-charts-body').textContent.includes('Second keeps'));
+    await page.waitForFunction(() => !document.getElementById('settings-view').hasAttribute('aria-busy'));
+    assert.equal(await page.locator('#settings-status').textContent(), 'This browser is signed in to another account now.');
     assert.doesNotMatch(await page.locator('#settings-view').textContent(), /First keeps/);
     assert.equal(await page.locator('input[name="settings-favourable"]:checked').getAttribute('value'), 'support');
     for (const account of [first, second]) {
