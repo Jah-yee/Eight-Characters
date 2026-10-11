@@ -189,7 +189,9 @@ class TestNamingRules(unittest.TestCase):
         )
         # Without Jia or Ren the Resource becomes the Rob Wealth (化印为劫).
         named = name_structure(pillars('庚午 庚寅 丙戌 己丑'))
-        self.assertEqual((named['structure'], named['by']), ('jian_lu_yue_jie', 'combination'))
+        self.assertEqual(
+            (named['structure'], named['by']), ('jian_lu_yue_jie', 'combination')
+        )
         # 若戊生午月，干透丙火，支会火局，则化刃为印.
         named = name_structure(pillars('甲寅 丙午 戊戌 癸亥'))
         self.assertEqual((named['structure'], named['by']), ('resource', 'combination'))
@@ -204,7 +206,9 @@ class TestNamingRules(unittest.TestCase):
             ('杂气正官: 壬 and 丁 combine and are taken away', '壬戌 丁未 戊申 乙卯'),
         ):
             with self.subTest(text=text):
-                self.assertEqual(name_structure(pillars(chart))['structure'], 'direct_officer')
+                self.assertEqual(
+                    name_structure(pillars(chart))['structure'], 'direct_officer'
+                )
         # Killings gives way only an Eating God: Wu (Wealth, the main qi) shown first stays.
         named = name_structure(pillars('戊辰 庚戌 甲子 丙寅'))
         self.assertEqual((named['structure'], named['stem']), ('wealth', '戊'))
@@ -944,7 +948,9 @@ class TestLuckCases(unittest.TestCase):
         # the Eating God for a yang Day Master (丙 with 辛 for 甲), the Friend for a yin
         # one (乙 with 庚 for 乙).
         _, _, verdicts, words = luck_reading('direct_officer', facts('甲', '辛'))
-        self.assertEqual((verdicts['eating_god'], words['eating_god']), ('against', '不可逢合'))
+        self.assertEqual(
+            (verdicts['eating_god'], words['eating_god']), ('against', '不可逢合')
+        )
         _, _, verdicts, _ = luck_reading('direct_officer', facts('乙', '庚'))
         self.assertEqual(verdicts['friend'], 'against')
 
@@ -955,8 +961,6 @@ class TestLuckCases(unittest.TestCase):
                 with self.subTest(structure=structure, case=case.id):
                     self.assertIn((structure, case.id), tested)
             self.assertIn((structure, 'general'), tested)
-
-
 
 
 def read(chart: str) -> dict[str, object]:
@@ -1041,7 +1045,10 @@ class TestOuterStructures(unittest.TestCase):
         # 周丞相: 戊被制不能伏煞，时透庚财，即以清食者 (Wu, a Hurting Officer to Ding,
         # is the 食), and the text's verdict: 不利劫财，伤食皆吉，喜财怕印，透煞亦顺.
         reading = read('戊戌 甲子 丁未 庚戌')
-        self.assertEqual((reading['chapter'], reading['case']), ('论偏官取运', 'wealth_clears_resource'))
+        self.assertEqual(
+            (reading['chapter'], reading['case']),
+            ('论偏官取运', 'wealth_clears_resource'),
+        )
         verdicts = reading['verdicts']
         assert isinstance(verdicts, dict)
         self.assertEqual(verdicts['direct_wealth'], 'favourable')

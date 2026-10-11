@@ -120,7 +120,6 @@ DIRECTIONS: Final[dict[str, ElementName]] = {
 }
 
 
-
 NamedBy = Literal[
     # The month is the Day Master's prosperity or, for a yang Day Master, its blade.
     'prosperity',
@@ -245,7 +244,9 @@ def name_structure(pillars: Mapping[str, tuple[str, str]]) -> Naming:
         if combination is not None:
             stem = hidden_stems_lookup()[combination[1]][0]
             god = ten_god(day_master, stem)
-            if god not in _OWN and any(element_of(seen) == element_of(stem) for seen in shown):
+            if god not in _OWN and any(
+                element_of(seen) == element_of(stem) for seen in shown
+            ):
                 return {
                     'structure': STRUCTURE_OF_GOD[god],
                     'by': 'combination',
@@ -253,7 +254,9 @@ def name_structure(pillars: Mapping[str, tuple[str, str]]) -> Naming:
                     'because': combination,
                 }
         return {
-            'structure': 'jian_lu_yue_jie' if own_month == 'prosperity' else 'yang_blade',
+            'structure': 'jian_lu_yue_jie'
+            if own_month == 'prosperity'
+            else 'yang_blade',
             'by': own_month,
             'stem': None,
             'because': None,
@@ -303,7 +306,11 @@ def name_structure(pillars: Mapping[str, tuple[str, str]]) -> Naming:
             'stem': main,
             'because': None,
         }
-    if len(hidden) > 1 and hidden[1] in shown and ten_god(day_master, hidden[1]) not in _OWN:
+    if (
+        len(hidden) > 1
+        and hidden[1] in shown
+        and ten_god(day_master, hidden[1]) not in _OWN
+    ):
         middle = hidden[1]
         keeper = _keeper(shown, main, middle)
         if keeper is not None:
@@ -337,7 +344,9 @@ def _by_combination(
     if combination is not None:
         stem = hidden_stems_lookup()[combination[1]][0]
         god = ten_god(day_master, stem)
-        keeper = _keeper(shown, main, stem) if shown is not None and god in _OWN else None
+        keeper = (
+            _keeper(shown, main, stem) if shown is not None and god in _OWN else None
+        )
         if keeper is not None:
             return {
                 'structure': STRUCTURE_OF_GOD[ten_god(day_master, main)],
@@ -1303,8 +1312,12 @@ def _combiner_of_officer(day_master: str) -> TenGodName:
     """The god of the stem that combines (五合) the Day Master's Direct Officer: the
     Eating God for a yang Day Master (丙 with 辛 for 甲), the Day Master's own Friend for a
     yin one (乙 with 庚 for 乙)."""
-    officer = next(stem for stem in STEM_ORDER if ten_god(day_master, stem) == 'direct_officer')
-    partner = next(stem for stem in STEM_ORDER if frozenset((officer, stem)) in COMBINING)
+    officer = next(
+        stem for stem in STEM_ORDER if ten_god(day_master, stem) == 'direct_officer'
+    )
+    partner = next(
+        stem for stem in STEM_ORDER if frozenset((officer, stem)) in COMBINING
+    )
     return ten_god(day_master, partner)
 
 
@@ -1370,7 +1383,9 @@ def luck_reading(
     texts = [case.text]
     if structure == 'direct_officer' and facts.show(OFFICER):
         rules += OFFICER_SHOWN[1]
-        rules.append(rule((_combiner_of_officer(facts.day_master),), 'against', '不可逢合'))
+        rules.append(
+            rule((_combiner_of_officer(facts.day_master),), 'against', '不可逢合')
+        )
         texts.insert(0, OFFICER_SHOWN[0])
     rules += case.rules(facts)
     verdicts: dict[TenGodName, Verdict] = dict.fromkeys(_ALL_GODS, 'idle')
