@@ -1,5 +1,57 @@
 # Changelog
 
+## 0.49.0
+
+Today and Settings, the pages: the day of the chart on screen, and what the account
+keeps for it, drawn from the API of 0.48.0 (#67).
+
+### Added
+- **Today**, Chart · Today in a chart's bar (`docs/Standard-Today.md`): the day of the
+  chart on screen at `#today?<the chart's link parts>&day=…`, with whose day and the
+  open topic. The pull line, the run of 22 days, the day's four pillars with their Ten
+  Gods and pulls, the relationships with the chart, the hours on the clock with their
+  calls, and Marriage, Work, Health and the day's page, with each pull's parts and the
+  canon's readings in English. Steps, Today and the partner's day replace the address;
+  topics add to it. Bands and calls are marked by shape and by word. Keys `[` `]` N and
+  its own commands. Copy as text and print.
+- **Settings** at `#settings` (`docs/Standard-Settings.md`), from the account menu, Today
+  and the commands: your partner's chart (open or remove), where you are (a place search
+  of its own) and the three schools from `GET /api/schools`.
+- **Save as partner**, in a chart's bar: keeps the chart on screen as your partner's,
+  with an optional name, saying what it replaces.
+- **API:** a settings change carries the `updated_at` it was made from; one made from
+  settings changed since is refused with `412`, and writes nothing.
+- Icons from Lucide 1.53.0: settings, sun and user-plus.
+
+### Changed
+- The privacy notice says what Settings keep: a partner's chart if you save one, where
+  you are and the schools.
+- Chart links name `fold`, `0` or `1`, for a time the place's clocks repeat, as a saved
+  birth does (`docs/Standard-Links.md`); Save as partner keeps it, and the Evolution
+  explorer's link passes it on (`docs/api.md`). The form still makes no such link.
+- `?` on Today lists the day's keys, not the chart's.
+
+### Fixed
+- A branch card lifted by a pointer resting at its foot no longer drops and lifts without
+  end: lifted, it still covers the 2px it rose from. Phones' taller bar put WebKit's
+  pointer there in the life grid's keyboard test.
+
+### Tests
+- `tests/browser/today.test.mjs` and `tests/browser/settings.test.mjs`, in Chromium and
+  WebKit, desktop and touch: every number on Today against its field in the API's
+  answer, the address and its history, late answers, the keys, the partner's day, the
+  states without a place, a gender or a partner, refused link parts, Finnish, print,
+  pinyin beside every character; Settings' schools, place, stale writes, Save as
+  partner, names as text, and the sign-in they need.
+- `tests/test_accounts_settings.py`: the version check, in the store and the API.
+- `links.test.mjs` refuses a wrong `fold`; `location.test.mjs` checks the explorer's.
+- `foundations.test.mjs`: Today, with each of its topics, and Settings are set in the
+  page fonts and meet AA contrast, in both languages, light and dark.
+- A browser run filtered by name (`tests/run_checks.py browser --name …`) ends: Node
+  calls a file's root `after` while its `before` is still under way when none of its
+  tests match, and the `after` hooks now wait for `before` to settle.
+- Version bumped to `0.49.0`. The regression fixture changes only in `engine.version`.
+
 ## 0.48.0
 
 Today's API: what a day, its month, its year and the luck pillar in force bring to the

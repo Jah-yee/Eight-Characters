@@ -14,11 +14,19 @@ const playwright = await import(moduleName);
 let browser;
 // Charts need an account: the suite signs in to one of its own, which every page gets.
 let account;
-before(async () => {
-  browser = await playwright[engineName].launch({ headless: true });
-  account = await newAccount(playwright);
+// A run whose name pattern matches none of a file's tests reaches `after` while `before`
+// is still under way, so `after` waits for it to settle (its failure is `before`'s to
+// report): the browser it launches is closed, and the run ends.
+let setup = null;
+before(() => {
+  setup = (async () => {
+    browser = await playwright[engineName].launch({ headless: true });
+    account = await newAccount(playwright);
+  })();
+  return setup;
 });
 after(async () => {
+  await Promise.allSettled([setup]);
   if (account) await deleteAccount(playwright, account);
   if (browser) await browser.close();
 });
@@ -323,6 +331,14 @@ for (const profile of profiles) {
       // Links from before coordinates were passed still resolve the place by name.
       assert.match(await open('date=1988-02-04&time=15:40&city=Chengdu&country=China'), /Stopped by the test/);
       assert.deepEqual(sent, [{ date: '1988-02-04', time: '15:40', city: 'Chengdu', country: 'China' }]);
+      // A time the place's clocks repeat names its pass, 0 or 1, as the chart's link does.
+      const repeated = 'date=2020-10-25&time=03:30&latitude=60.17&longitude=24.94&timezone=Europe%2FHelsinki';
+      assert.match(await open(`${repeated}&fold=2`), /fold other than 0 or 1/);
+      assert.equal(sent.length, 1);
+      assert.match(await open(`${repeated}&fold=1`), /Stopped by the test/);
+      assert.deepEqual(sent.at(-1), {
+        date: '2020-10-25', time: '03:30', location: { timezone: 'Europe/Helsinki', latitude: 60.17, longitude: 24.94, fold: 1 },
+      });
     });
   });
 }

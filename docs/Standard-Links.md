@@ -22,6 +22,10 @@ The chart lives in the address's fragment, the part after `#`:
   [luck pillars](Standard-Luck-Pillars.md).
 - `zi`, only when it is not the engine's default: the Zi-hour convention,
   `whole_zi_23`.
+- `fold`, only for a time the place's clocks repeat: `0` for its first pass, `1` for
+  its second. The form makes no such link; a saved birth that names its pass, such as a
+  partner's chart opened from [Settings](Standard-Settings.md), does, and the chart
+  keeps it for Save as partner and the Evolution explorer.
 - `display`, only when it is not Characters: `ten-gods` or `hidden-stems`.
 - `luck`, only while a luck pillar stands in the chart: `before`, or
   `<decade>/<stem|branch>` such as `5/stem` (see
@@ -63,6 +67,12 @@ waits in the form.
 
 Two charts side by side have an address of their own, holding both charts' links:
 see [Comparing two charts](Standard-Compare.md).
+
+## Today and Settings
+
+A chart's day has an address of its own: `#today?` with the chart's link parts, then
+`day`, and `who` and `topic` where they apply. See [Today](Standard-Today.md#its-address).
+Settings are at `#settings` ([Settings](Standard-Settings.md)).
 
 ## Copy link
 

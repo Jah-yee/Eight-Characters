@@ -16,11 +16,19 @@ const playwright = await import(moduleName);
 let browser;
 // Charts need an account: each suite signs in to one of its own, which every page gets.
 let account;
-before(async () => {
-  browser = await playwright[engineName].launch({ headless: true });
-  account = await newAccount(playwright);
+// A run whose name pattern matches none of a file's tests reaches `after` while `before`
+// is still under way, so `after` waits for it to settle (its failure is `before`'s to
+// report): the browser it launches is closed, and the run ends.
+let setup = null;
+before(() => {
+  setup = (async () => {
+    browser = await playwright[engineName].launch({ headless: true });
+    account = await newAccount(playwright);
+  })();
+  return setup;
 });
 after(async () => {
+  await Promise.allSettled([setup]);
   if (account) await deleteAccount(playwright, account);
   if (browser) await browser.close();
 });

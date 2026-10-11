@@ -47,4 +47,7 @@ A heading moves to the next page with what it heads.
 
 Save as PDF in the print dialog gives the same pages.
 
+Today copies and prints its day in the same way: see
+[Today](Standard-Today.md#copy-and-print).
+
 See [browser regression tests](../tests/browser/README.md): `output.test.mjs`.

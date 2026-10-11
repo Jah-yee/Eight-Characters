@@ -525,10 +525,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // A chart for a birth at a picked place: its coordinates, not its name, which would
   // resolve to the first place so named. With a gender it has its luck pillars.
   const GENDERS = ['female', 'male'];
-  const chartRequest = ({ date, time, place, lang, zi, gender = null }) => ({
+  const chartRequest = ({ date, time, place, lang, zi, gender = null, fold = null }) => ({
     date,
     time,
-    location: { timezone: place.timezone, latitude: place.latitude, longitude: place.longitude },
+    // A time the place's clocks repeat needs its pass: 0 the first, 1 the second.
+    location: { timezone: place.timezone, latitude: place.latitude, longitude: place.longitude, ...(fold === null ? {} : { fold }) },
     include_chart: true,
     include_hidden_stems: true,
     include_ten_gods: true,
@@ -791,6 +792,7 @@ document.addEventListener('DOMContentLoaded', () => {
       timezone: request.location.timezone,
       lang: currentLanguage,
     });
+    if (request.location.fold !== undefined) query.set('fold', String(request.location.fold));
     window.location.assign(`/explorer/?${query.toString()}`);
   });
 
@@ -854,6 +856,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const takeLanguage = (lang) => {
     currentLanguage = i18n.setLanguage(lang);
     applyLanguage();
+    settingsPage.redraw();
+    today.setLanguage(currentLanguage);
     if (shown !== null && !chartView.classList.contains('hidden') && !pending
       && chartView.getAttribute('aria-busy') !== 'true' && shown.request.lang !== currentLanguage) {
       reshow({ lang: currentLanguage });
@@ -881,6 +885,9 @@ document.addEventListener('DOMContentLoaded', () => {
       chartView.removeAttribute('aria-busy');
       setPending(false);
       compare.hide();
+      settingsPage.forget();
+      settingsPage.hide();
+      today.forget();
       askForChart();
       leaveChart();
       addressForm('replaceState');
@@ -1390,12 +1397,12 @@ document.addEventListener('DOMContentLoaded', () => {
   // ── The address: the chart on screen and its open topic ──
   // A chart lives in the address's fragment, which browsers never send to the server:
   // #chart?date=…&time=…&place=…&city=…&latitude=…&longitude=…&timezone=…&lang=…, then
-  // gender, zi, display, luck, life and topic where they differ from a new chart's. A new
-  // chart, another topic, Edit and New chart add history entries; the language, the
-  // Zi-hour convention, the display, the luck pillar and the life grid's view replace the
-  // current one. The address never names a chart that is not on screen.
+  // gender, zi, fold, display, luck, life and topic where they differ from a new
+  // chart's. A new chart, another topic, Edit and New chart add history entries; the
+  // language, the Zi-hour convention, the display, the luck pillar and the life grid's
+  // view replace the current one. The address never names a chart that is not on screen.
   const CHART_ROUTE = '#chart?';
-  const LINK_PARTS = ['date', 'time', 'place', 'city', 'latitude', 'longitude', 'timezone', 'lang', 'gender', 'zi', 'display', 'luck', 'life', 'topic'];
+  const LINK_PARTS = ['date', 'time', 'place', 'city', 'latitude', 'longitude', 'timezone', 'lang', 'gender', 'zi', 'fold', 'display', 'luck', 'life', 'topic'];
   // The period standing in the chart as its fifth pillar: before the luck pillars, or a
   // decade's phase.
   const LUCK_PATH = /^(before|\d{1,2}\/(stem|branch))$/;
@@ -1433,6 +1440,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (request.gender) params.set('gender', request.gender);
     const zi = request.conventions?.zi_convention ?? ZI_CONVENTIONS[0];
     if (zi !== ZI_CONVENTIONS[0]) params.set('zi', zi);
+    if (request.location.fold !== undefined) params.set('fold', String(request.location.fold));
     return params;
   };
   const chartAddress = () => {
@@ -1503,6 +1511,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!/^\d{2}:\d{2}(:\d{2})?$/.test(time) || !parseWallClock(`${date}T${time}`)) throw linkError('time');
     const lang = text('lang');
     if (!['fi', 'en'].includes(lang)) throw linkError('lang');
+    // Which pass of a time the place's clocks repeat, 0 or 1: only a saved birth names one.
+    const fold = optional('fold', (value) => value === '0' || value === '1');
     return {
       date,
       time,
@@ -1516,6 +1526,7 @@ document.addEventListener('DOMContentLoaded', () => {
       lang,
       gender: optional('gender', (value) => GENDERS.includes(value)),
       zi: optional('zi', (value) => ZI_CONVENTIONS.includes(value)) ?? ZI_CONVENTIONS[0],
+      fold: fold === null ? null : Number(fold),
       display: optional('display', (value) => DISPLAYS.includes(value)) ?? 'characters',
       // Only a chart with a gender has luck pillars to stand in it.
       luck: optional('luck', (value) => LUCK_PATH.test(value) && params.has('gender')),
@@ -1602,6 +1613,224 @@ document.addEventListener('DOMContentLoaded', () => {
     },
   });
 
+  // Settings: what the account keeps for a chart's day (settings.js), at #settings. Close
+  // goes back to the page Settings was opened from, or to the form.
+  const SETTINGS_ROUTE = '#settings';
+  const settingsView = document.getElementById('settings-view');
+  const accountSettingsBtn = document.getElementById('account-settings');
+  const accountDialog = document.getElementById('account-dialog');
+  if (!settingsView || !accountSettingsBtn || !accountDialog) throw new Error('Settings are incomplete.');
+  let settingsReturn = null;
+  const settingsPage = window.EC_SETTINGS.create({
+    view: settingsView,
+    translate: requiredTranslation,
+    escape: esc,
+    format: { parseWallClock, date: formatDate, time: formatTime, coordinates: formatCoordinates },
+    language: () => currentLanguage,
+    account,
+    onOpenChart: (params) => goToChart(params),
+    onNewChart: () => {
+      settingsReturn = null;
+      addressForm('pushState');
+      followAddress();
+      form.reset();
+      clearResolvedLocation();
+      dateInput.focus();
+    },
+    onClose: () => {
+      const back = settingsReturn;
+      settingsReturn = null;
+      history.pushState(null, '', back ?? formAddress());
+      followAddress();
+    },
+    onChanged: () => {},
+    toast: (text, isError) => showToast(text, isError),
+  });
+  const openSettings = () => {
+    if (location.hash !== SETTINGS_ROUTE) settingsReturn = `${formAddress()}${location.hash}`;
+    history.pushState(null, '', `${formAddress()}${SETTINGS_ROUTE}`);
+    followAddress();
+  };
+  accountSettingsBtn.addEventListener('click', () => {
+    accountDialog.close();
+    openSettings();
+  });
+
+  // Today: the chart's day (today.js), at #today? with the chart's link parts, the day
+  // (day), whose day (who=partner) and the open topic. Chart · Today in the chart's bar
+  // opens it for the chart on screen, on today's date where you are.
+  const TODAY_ROUTE = '#today?';
+  const todayView = document.getElementById('today-view');
+  const pageSwitch = document.getElementById('page-switch');
+  if (!todayView || !pageSwitch) throw new Error('Today is incomplete.');
+  // The date on the clock in a time zone: where you are, or without a place, here.
+  const dateIn = (zone) => new Intl.DateTimeFormat('en-CA', {
+    timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date());
+  const readTodayLink = (hash) => {
+    const params = new URLSearchParams(hash.slice(TODAY_ROUTE.length));
+    const own = {};
+    for (const key of ['day', 'who', 'topic']) {
+      if (params.getAll(key).length > 1) throw linkError(key);
+      own[key] = params.get(key);
+      params.delete(key);
+    }
+    // A chart's display, luck pillar and life grid are the chart page's, not the day's.
+    for (const key of ['display', 'luck', 'life']) if (params.has(key)) throw linkError(key);
+    const chart = readChartLink(`${CHART_ROUTE}${params}`);
+    if (own.day === null || !window.EC_TODAY.DAY_PATH.test(own.day) || !parseWallClock(`${own.day}T12:00`)) throw linkError('day');
+    if (own.who !== null && own.who !== 'partner') throw linkError('who');
+    if (own.topic !== null && !window.EC_TODAY.TOPIC_PATH.test(own.topic)) throw linkError('topic');
+    return { chart, chartParams: params.toString(), lang: chart.lang, day: own.day, who: own.who ?? 'self', topic: own.topic };
+  };
+  const today = window.EC_TODAY.create({
+    view: todayView,
+    translate: requiredTranslation,
+    escape: esc,
+    locale,
+    settings: settingsPage,
+    format: { parseWallClock, date: formatDate, time: formatTime },
+    account,
+    go: (hash, method) => history[method](null, '', `${formAddress()}${hash}`),
+    // Today's Chart hands its focus to the chart's own, so the chart's keys act at once.
+    onChart: async (params) => {
+      history.pushState(null, '', `${formAddress()}${CHART_ROUTE}${params}`);
+      await followAddress();
+      if (!chartView.classList.contains('hidden')) pageSwitch.querySelector('[data-page="chart"]').focus();
+    },
+    onSettings: () => openSettings(),
+    onEdit: (params) => goToChart(params),
+    onLanguage: (lang) => {
+      currentLanguage = i18n.setLanguage(lang);
+      applyLanguage();
+      settingsPage.redraw();
+    },
+    toast: (text, isError) => showToast(text, isError),
+  });
+  const openToday = async () => {
+    const chosen = shown;
+    let kept;
+    try {
+      kept = await settingsPage.load(() => shown === chosen);
+    } catch (err) {
+      console.error(err);
+      showToast(err.message, true);
+      return;
+    }
+    // Only from the chart still on screen.
+    if (shown !== chosen || chosen === null || chartView.classList.contains('hidden')) return;
+    const day = dateIn(kept.place?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
+    const params = linkParams(chosen.request, chosen.place);
+    params.set('day', day);
+    history.pushState(null, '', `${formAddress()}${TODAY_ROUTE}${params}`);
+    await followAddress();
+    // The chart's Today hands its focus to the day's own, so the day's keys act at once.
+    if (today.isShown()) todayView.querySelector('#today-page-switch [data-page="today"]').focus();
+  };
+  pageSwitch.addEventListener('click', (event) => {
+    if (event.target.closest('button[data-page="today"]')) openToday();
+  });
+
+  // Save as partner's chart: the chart on screen, kept as the partner's for its day
+  // (settings.js). It asks for a name and says what it replaces. The day needs the luck
+  // pillars, and so a gender.
+  const savePartnerBtn = document.getElementById('save-partner-btn');
+  const partnerDialog = document.getElementById('partner-dialog');
+  const partnerForm = document.getElementById('partner-form');
+  const partnerChart = document.getElementById('partner-dialog-chart');
+  const partnerReplaces = document.getElementById('partner-dialog-replaces');
+  const partnerNameInput = document.getElementById('partner-name');
+  const partnerNameStatus = document.getElementById('partner-name-status');
+  const partnerCancel = document.getElementById('partner-cancel');
+  if (!savePartnerBtn || !partnerDialog || !partnerForm || !partnerChart || !partnerReplaces || !partnerNameInput
+    || !partnerNameStatus || !partnerCancel) throw new Error('Saving a partner is incomplete.');
+  // The chart the dialog saves, taken when it opened, and the basis of the settings it
+  // read then: a save is made from them.
+  let partnerToSave = null;
+  let partnerBasis = null;
+  // Which saved partner's chart a save replaces, as the settings last read say.
+  const sayReplaces = (current) => {
+    const partner = current?.partner ?? null;
+    partnerReplaces.textContent = partner === null
+      ? '' : requiredTranslation('save_partner_replaces', { name: settingsPage.partnerName(partner) });
+    partnerReplaces.classList.toggle('hidden', partner === null);
+  };
+  savePartnerBtn.addEventListener('click', async () => {
+    if (shown === null) return;
+    if (!shown.request.gender) {
+      showToast(requiredTranslation('save_partner_needs_gender'), true);
+      return;
+    }
+    const chosen = shown;
+    let current;
+    try {
+      current = await settingsPage.load(() => shown === chosen);
+    } catch (err) {
+      console.error(err);
+      showToast(err.message, true);
+      return;
+    }
+    // Only for the chart still on screen, and once.
+    if (shown !== chosen || chartView.classList.contains('hidden') || partnerDialog.open) return;
+    partnerToSave = chosen;
+    partnerBasis = settingsPage.basis();
+    partnerChart.textContent = chosen.heading;
+    sayReplaces(current);
+    partnerNameInput.value = '';
+    partnerNameStatus.textContent = '';
+    partnerDialog.showModal();
+    partnerNameInput.focus();
+  });
+  partnerCancel.addEventListener('click', () => partnerDialog.close());
+  partnerDialog.addEventListener('close', () => {
+    partnerToSave = null;
+    partnerBasis = null;
+  });
+  partnerForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (partnerToSave === null) return;
+    const name = partnerNameInput.value.trim();
+    // A name is one line of printable text, up to 80 characters, or none.
+    if (name.length > 80 || /\p{Cc}/u.test(name)) {
+      partnerNameStatus.textContent = requiredTranslation('save_partner_name_error');
+      partnerNameInput.focus();
+      return;
+    }
+    const { request, place } = partnerToSave;
+    const birth = {
+      ...(name ? { name } : {}),
+      date: request.date,
+      time: request.time,
+      place: {
+        name: place.display,
+        city: place.city,
+        timezone: request.location.timezone,
+        latitude: request.location.latitude,
+        longitude: request.location.longitude,
+      },
+      fold: request.location.fold ?? null,
+      gender: request.gender,
+      zi: request.conventions?.zi_convention ?? ZI_CONVENTIONS[0],
+    };
+    let problem;
+    try {
+      problem = await settingsPage.savePartner(birth, partnerBasis);
+    } catch (err) {
+      console.error(err);
+      problem = err.message;
+    }
+    if (problem === null) {
+      partnerDialog.close();
+      showToast(requiredTranslation('save_partner_saved'), false);
+    } else {
+      // Refused, the settings may have been read again: what a save replaces is said anew,
+      // and the next save is made from them.
+      partnerNameStatus.textContent = problem;
+      partnerBasis = settingsPage.basis();
+      sayReplaces(settingsPage.current());
+    }
+  });
+
   const sameChart = (link) => {
     if (shown === null) return false;
     const { request, place } = shown;
@@ -1610,6 +1839,7 @@ document.addEventListener('DOMContentLoaded', () => {
       && request.location.latitude === link.place.latitude && request.location.longitude === link.place.longitude
       && request.location.timezone === link.place.timezone
       && (request.conventions?.zi_convention ?? ZI_CONVENTIONS[0]) === link.zi
+      && (request.location.fold ?? null) === link.fold
       && (request.gender ?? null) === link.gender;
   };
 
@@ -1655,6 +1885,73 @@ document.addEventListener('DOMContentLoaded', () => {
     setPending(false);
     setFormError('');
     compare.hide();
+    settingsPage.hide();
+    today.hide();
+    if (location.hash.startsWith(TODAY_ROUTE)) {
+      let next;
+      try {
+        next = readTodayLink(location.hash);
+      } catch (err) {
+        console.error(err);
+        askForChart();
+        leaveChart();
+        setFormError(err.message);
+        addressForm('replaceState');
+        return;
+      }
+      if (next.lang !== currentLanguage) {
+        currentLanguage = i18n.setLanguage(next.lang);
+        applyLanguage();
+      }
+      // The day is the account's too: a session that ended asks for a sign-in first.
+      askForChart();
+      leaveChart();
+      inputView.classList.add('hidden');
+      try {
+        const holds = await account.stillSignedIn(() => arrival === arrivals);
+        if (arrival !== arrivals) return;
+        if (!holds) await account.signIn();
+      } catch (err) {
+        if (arrival !== arrivals) return;
+        console.error(err);
+        inputView.classList.remove('hidden');
+        setFormError(err.message);
+        addressForm('replaceState');
+        return;
+      }
+      if (arrival !== arrivals) return;
+      if (currentLanguage !== next.lang) {
+        // Signing in here, or another tab's account taken by the check, set the page to
+        // the account's language: the day is shown in it, and its address says so.
+        next = { ...next, lang: currentLanguage };
+        history.replaceState(null, '', `${formAddress()}${window.EC_TODAY.address(next)}`);
+      }
+      today.show(next);
+      return;
+    }
+    if (location.hash === SETTINGS_ROUTE) {
+      // Settings are the account's: a session that ended since the page was served asks
+      // for a sign-in first.
+      askForChart();
+      leaveChart();
+      inputView.classList.add('hidden');
+      document.title = requiredTranslation('settings_page_title');
+      try {
+        const holds = await account.stillSignedIn(() => arrival === arrivals);
+        if (arrival !== arrivals) return;
+        if (!holds) await account.signIn();
+      } catch (err) {
+        if (arrival !== arrivals) return;
+        console.error(err);
+        inputView.classList.remove('hidden');
+        setFormError(err.message);
+        addressForm('replaceState');
+        return;
+      }
+      if (arrival !== arrivals) return;
+      await settingsPage.show();
+      return;
+    }
     if (location.hash.startsWith(COMPARE_ROUTE)) {
       let pair;
       try {
@@ -1857,7 +2154,24 @@ document.addEventListener('DOMContentLoaded', () => {
   [keysDialog, paletteDialog].forEach((dialog) => dialog.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') event.stopPropagation();
   }));
-  const openKeys = () => keysDialog.showModal();
+  // The keys of the page shown: a chart's, with its luck pillar's where it has them, or
+  // the day's.
+  const chartKeys = [...keysDialog.querySelectorAll('.key-row-chart')];
+  const todayKeys = [...keysDialog.querySelectorAll('.key-row-today')];
+  const readKey = keysDialog.querySelector('#key-read');
+  const keyNote = keysDialog.querySelector('.key-note');
+  if (!readKey || !keyNote || !chartKeys.length || !todayKeys.length) throw new Error('The keys dialog is incomplete.');
+  const openKeys = () => {
+    const onToday = today.isShown();
+    chartKeys.forEach((row) => row.classList.toggle('hidden', onToday));
+    readKey.classList.toggle('hidden', onToday || currentLanguage !== 'en');
+    luckKeys.forEach((row) => row.classList.toggle('hidden', onToday || !luck.has()));
+    todayKeys.forEach((row) => row.classList.toggle('hidden', !onToday));
+    const note = onToday ? 'key_note_today' : 'key_note';
+    keyNote.setAttribute('data-i18n', note);
+    keyNote.textContent = requiredTranslation(note);
+    keysDialog.showModal();
+  };
   keysDialog.addEventListener('click', (event) => {
     if (event.target.closest('[data-close-dialog]')) keysDialog.close();
   });
@@ -1931,12 +2245,13 @@ document.addEventListener('DOMContentLoaded', () => {
       add(requiredTranslation('view_label'), evolution.textContent, () => evolution.click(), 'workflow');
     }
     const chart = requiredTranslation('palette_chart');
-    (embedded ? [copyTextBtn] : [copyLinkBtn, copyTextBtn, backBtn, newChartBtn, compareBtn])
+    (embedded ? [copyTextBtn] : [copyLinkBtn, copyTextBtn, backBtn, newChartBtn, compareBtn, savePartnerBtn])
       .forEach((button) => add(chart, button.textContent, () => button.click(), window.EC_CONTROLS.icon(button)));
     // The page's own print, whose stylesheet prints the chart and its open topic.
     add(chart, requiredTranslation('print'), () => window.print(), 'printer');
     if (currentTopic() !== null) add(chart, requiredTranslation('panel_close'), closePanelAndReturnFocus, 'x');
     add(chart, requiredTranslation('keys_title'), openKeys, 'keyboard');
+    if (!embedded) add(chart, requiredTranslation('settings_open'), openSettings, 'settings');
     if (!embedded) add(chart, requiredTranslation(account.signedIn() ? 'account_title' : 'account_sign_in'), account.open);
     return commands;
   };
@@ -1967,6 +2282,25 @@ document.addEventListener('DOMContentLoaded', () => {
     else return;
     event.preventDefault();
     followView();
+  });
+
+  // Today's keys, while its page has focus and no field does, and its commands.
+  document.addEventListener('keydown', (event) => {
+    if (event.defaultPrevented || !today.isShown() || keysDialog.open || paletteDialog.open || account.isOpen()
+      || partnerDialog.open) return;
+    if (event.key.toLowerCase() === 'k' && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey) {
+      event.preventDefault();
+      palette.open(today.commands().map((command) => ({ group: requiredTranslation('page_today'), ...command })));
+      return;
+    }
+    const focus = document.activeElement;
+    if (!todayView.contains(focus) || focus.closest('input, textarea, select, [contenteditable="true"]')) return;
+    if (event.key === '?' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      event.preventDefault();
+      openKeys();
+      return;
+    }
+    if (today.keydown(event)) event.preventDefault();
   });
 
   applyLanguage();

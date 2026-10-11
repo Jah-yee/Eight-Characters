@@ -41,7 +41,7 @@ async function rest(page, locator) {
 
 // Somewhere that names nothing: the chart's bar.
 async function away(page) {
-  const bar = await page.locator('.chart-identity').boundingBox();
+  const bar = await page.locator('#chart-view .chart-identity').boundingBox();
   await page.mouse.move(bar.x + 4, bar.y + 4);
 }
 
@@ -50,6 +50,20 @@ for (const profile of profiles) {
     const check = (name, run) => it(name, { timeout: 90000 }, () => withPage(profile, run));
 
     if (profile.name === 'desktop') {
+      // A mouse's pointer: a touch screen has no hover.
+      check('a branch card lifted by a pointer at its foot stays lifted, and stops moving', async (page) => {
+        await openChart(page, { lang: 'en' });
+        const card = page.locator('#pillars .card.branch[data-pillar="hour"]');
+        const box = await card.boundingBox();
+        // The card's last row of pixels at rest: lifted 2px, the card itself no longer
+        // covers it.
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height - 1);
+        await page.waitForTimeout(1200);
+        assert.equal(await card.evaluate((node) => node.matches(':hover')), true);
+        assert.deepEqual(await page.evaluate(() => document.getAnimations()
+          .filter((animation) => animation.playState === 'running').map((animation) => animation.transitionProperty)), []);
+      });
+
       check('a line rings what it names after half a second at rest, the next line at once, and none once left', async (page) => {
         const payload = await openChart(page);
         await page.locator('button[data-context="roots"]').click();
