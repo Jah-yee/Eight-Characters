@@ -3729,6 +3729,7 @@ body:has(> .compare-container:not(.hidden)) { padding: var(--space-4); }
 .today-dial-hour.earth path { fill: var(--earth-bg); }
 .today-dial-hour.water path { fill: var(--water-bg); }
 .today-dial-hour.is-now path { stroke: var(--ink-1); stroke-width: 3; }
+.today-hour-now { font-weight: 600; }
 .today-dial text { fill: currentColor; text-anchor: middle; dominant-baseline: middle; }
 .today-dial-glyph { font-family: var(--font-glyph); font-size: var(--text-3); }
 .today-dial-pinyin { font-size: var(--text-1); }

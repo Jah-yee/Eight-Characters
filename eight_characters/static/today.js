@@ -35,6 +35,9 @@
     if (state.topic !== null) params.set('topic', state.topic);
     return `#today?${params}`;
   };
+  // What a day is read for, its day and topic apart: the chart, in its language, and whose
+  // day it is.
+  const reading = (state) => `${chartLink(state)} ${state.who}`;
 
   const create = ({ view, translate: t, escape: esc, locale, settings, format, account, go, onChart, onSettings, onEdit, onLanguage, toast }) => {
     const need = (selector) => {
@@ -78,9 +81,15 @@
     let shownSettings = null;
     let answer = null;
     let asked = 0;
-    // The run the days and their steps go by: the answer drawn last's. None while no day
-    // is drawn.
+    // The run the days and their steps go by: the answer drawn last's, while what is shown
+    // is still read as it was (`daysReading`). None while no day is drawn, and none from
+    // when another chart, language or person is shown, or Today is left (its settings may
+    // change meanwhile), until the next answer is drawn.
     let daysRun = null;
+    let daysReading = null;
+    // The clock as the page last drew it: today where you are, and the hour of the day
+    // shown that it is in.
+    let clockDrawn = null;
 
     // ── Words and numbers in the page's language ──
     const lang = () => state?.lang ?? 'fi';
@@ -132,13 +141,15 @@
       next.setUTCDate(next.getUTCDate() + by);
       return next.toISOString().slice(0, 10);
     };
-    // A step from the day shown, through the run drawn: its next or previous day, so a
-    // date the place's clocks skipped is passed over. Beyond the run, or with none drawn
-    // (a day the API refused), a step is a calendar day.
+    // A step from the day shown, through the run drawn: as many of its days on as asked,
+    // so a date the place's clocks skipped is passed over; whatever goes past the run's
+    // end is counted in calendar days from that end. With no run drawn (a day the API
+    // refused, or another reading on its way), every step is a calendar day.
     const stepped = (by) => {
       const at = daysRun === null ? -1 : daysRun.findIndex((day) => day.date === state.day);
-      const to = daysRun?.[at + by];
-      return at >= 0 && to ? to.date : stepDay(state.day, by);
+      if (at < 0) return stepDay(state.day, by);
+      const end = Math.min(Math.max(at + by, 0), daysRun.length - 1);
+      return stepDay(daysRun[end].date, at + by - end);
     };
 
     // Moves to another state: the address follows, replacing the entry for a step and
@@ -364,6 +375,7 @@
     };
     const drawDays = () => {
       daysRun = answer.run;
+      daysReading = reading(state);
       layDays(state.day, 0);
     };
 
@@ -372,7 +384,7 @@
     // (date, pillar, score, band) is in its button, for the reader and for print. ──
     const drawRun = () => {
       const gods = answer.favourable.gods;
-      const today = todayAt(answer.place.timezone);
+      const { today } = clockDrawn;
       run.innerHTML = `
         <span id="today-run-label" class="today-run-label">${esc(t('today_run_label'))}</span>
         <div class="today-run-track" style="--for: var(--${gods.useful}-bg); --against: var(--${gods.unfavourable}-bg)">${answer.run.map((day) => `
@@ -477,7 +489,7 @@
     // ── The hours: a dial of the twelve double hours, by branch (Zi at the top, clockwise),
     // in their elements' colours, each with its call's mark; and the table, which says it
     // all (the dial is a picture of it). The hour the clock is in now, on today, is
-    // outlined. ──
+    // outlined on the dial, and named "now" in its table row, the current time. ──
     const DIAL = 240;
     const dial = () => {
       const centre = DIAL / 2;
@@ -487,8 +499,7 @@
         const angle = (degrees * Math.PI) / 180;
         return [centre + radius * Math.cos(angle), centre + radius * Math.sin(angle)].map((v) => v.toFixed(2)).join(' ');
       };
-      const now = answer.date === todayAt(answer.place.timezone) ? Date.now() : null;
-      const isNow = (hour) => now !== null && hour.spans.some((span) => Date.parse(span.start) <= now && now < Date.parse(span.end));
+      const isNow = (hour) => answer.hours.indexOf(hour) === clockDrawn.hour;
       const mark = (call, x, y) => {
         if (call === 'protect') return `<circle class="today-dial-call" cx="${x}" cy="${y}" r="4"/>`;
         if (call === 'mixed') return `<rect class="today-dial-call" x="${(x - 5).toFixed(2)}" y="${(y - 1).toFixed(2)}" width="10" height="2"/>`;
@@ -528,8 +539,8 @@
               <th scope="col">${esc(t('today_hour_ties'))}</th>
               <th scope="col">${esc(t('today_hour_call'))}</th>
             </tr></thead>
-            <tbody>${answer.hours.map((hour) => `<tr class="${hour.call === null ? '' : `call-${esc(hour.call)}`}">
-              <th scope="row"><span lang="zh-Hant">${esc(hour.branch)}</span> ${esc(hour.pinyin)} · ${esc(t('animal_' + hour.sign.toLowerCase()))}</th>
+            <tbody>${answer.hours.map((hour, index) => `<tr class="${hour.call === null ? '' : `call-${esc(hour.call)}`}"${index === clockDrawn.hour ? ' aria-current="time"' : ''}>
+              <th scope="row"><span lang="zh-Hant">${esc(hour.branch)}</span> ${esc(hour.pinyin)} · ${esc(t('animal_' + hour.sign.toLowerCase()))}${index === clockDrawn.hour ? ` <span class="today-hour-now">· ${esc(t('today_hour_now'))}</span>` : ''}</th>
               <td>${hour.spans.map((span) => `${esc(clock(span.start))}–${esc(clock(span.end))}`).join('<br>')}</td>
               <td>${esc(hour.ties.map(tieName).join(', ') || '—')}</td>
               <td>${hour.call === null ? '—' : `<span class="today-call-mark" aria-hidden="true"></span>${esc(t('today_call_' + hour.call))}`}</td>
@@ -661,7 +672,35 @@
       opener?.focus();
     };
 
+    // ── The clock: today where you are, and the hour of the day shown that it is in, on
+    // today alone (-1 for none). While a day is drawn, what the page says of them follows
+    // the clock past midnight and each hour's end (the bar's Today, the run's dot, the
+    // dial's "now"), looked at every half minute and when the page is seen again. ──
+    const clockAt = () => {
+      const today = todayAt(answer.place.timezone);
+      const time = Date.now();
+      const hour = answer.date !== today ? -1
+        : answer.hours.findIndex((h) => h.spans.some((span) => Date.parse(span.start) <= time && time < Date.parse(span.end)));
+      return { today, hour };
+    };
+    const followClock = () => {
+      if (answer === null) return;
+      const now = clockAt();
+      if (now.today === clockDrawn.today && now.hour === clockDrawn.hour) return;
+      clockDrawn = now;
+      keepingFocus(() => {
+        drawBar();
+        run.querySelectorAll('[data-today-day]').forEach((button) => button.classList.toggle('is-today', button.dataset.todayDay === now.today));
+        drawHours();
+      });
+    };
+    window.setInterval(followClock, 30 * 1000);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') followClock();
+    });
+
     const draw = () => {
+      clockDrawn = clockAt();
       drawBar();
       drawTopics();
       drawDays();
@@ -696,6 +735,8 @@
     // Says what the page shows instead of the day, with what can be done: the day before
     // it, and its open topic, are no longer shown.
     const instead = (text, actions) => keepingFocus(() => {
+      // An answer that could not be drawn is neither copied as text nor printed.
+      answer = null;
       body.classList.add('hidden');
       // No run is drawn: steps are calendar days again.
       daysRun = null;
@@ -713,6 +754,9 @@
       const before = state?.day ?? null;
       state = next;
       answer = null;
+      // The run drawn stands for its own reading alone: for another chart, language or
+      // person, the days wait for its own answer, and steps until then are calendar days.
+      if (daysRun !== null && daysReading !== reading(next)) daysRun = null;
       // The days move at once, from the run drawn; the rest waits, dimmed, for the day's
       // own answer.
       if (before !== null && before !== next.day && layDays(next.day, next.day > before ? 1 : -1)) markRun(next.day);
@@ -801,6 +845,8 @@
       asked += 1;
       state = null;
       answer = null;
+      // The settings may change meanwhile: the run drawn with them no longer leads steps.
+      daysRun = null;
       view.classList.add('hidden');
       view.removeAttribute('aria-busy');
     };
@@ -853,11 +899,18 @@
     // A swipe or drag on the days moves them with the pointer that started it, once it
     // has gone 40px across (more than a touch hold's 10px), and not from the screen's left
     // edge, which is iOS's Back. Let go, the day steps by as many days as it went, one at
-    // least, and the click that ends it opens nothing. Vertical scrolling stays the
-    // page's (touch-action: pan-y); a cancel, a lost capture or a second pointer moves
-    // nothing.
+    // least. Vertical scrolling stays the page's (touch-action: pan-y). A press that went
+    // more than 10px, a drag's or not, is no press: the click that ends it opens nothing.
+    // A cancel, a lost capture or a second pointer moves nothing.
     let drag = null;
-    let draggedAway = false;
+    let swallowing = false;
+    // The click that ends a gesture comes in the same task as its pointerup.
+    const swallowClick = () => {
+      swallowing = true;
+      setTimeout(() => {
+        swallowing = false;
+      }, 0);
+    };
     const dropDrag = () => {
       drag = null;
       days.classList.remove('is-dragging');
@@ -865,19 +918,24 @@
     };
     daysTrack.addEventListener('pointerdown', (event) => {
       if (drag !== null) {
+        // A second finger while one drags: neither moves the days. A primary pointer
+        // pressed while one is kept was let go where the days did not see it (a mouse let
+        // go off them before its drag began): its press starts anew.
         dropDrag();
-        return;
+        if (!event.isPrimary) return;
       }
       if (state === null || daysRun === null || event.button !== 0 || event.clientX < 24) return;
-      drag = { id: event.pointerId, x: event.clientX, y: event.clientY, dx: 0, moving: false };
+      drag = { id: event.pointerId, x: event.clientX, y: event.clientY, dx: 0, moving: false, still: true, vertical: false };
     });
     daysTrack.addEventListener('pointermove', (event) => {
-      if (drag === null || event.pointerId !== drag.id) return;
+      if (drag === null || event.pointerId !== drag.id || drag.vertical) return;
       const dx = event.clientX - drag.x;
       if (!drag.moving) {
+        const dy = event.clientY - drag.y;
+        if (Math.max(Math.abs(dx), Math.abs(dy)) > 10) drag.still = false;
         // Up or down first: the page scrolls, and this is no drag.
-        if (Math.abs(event.clientY - drag.y) > Math.max(Math.abs(dx), 10)) {
-          dropDrag();
+        if (Math.abs(dy) > Math.max(Math.abs(dx), 10)) {
+          drag.vertical = true;
           return;
         }
         if (Math.abs(dx) < DRAG) return;
@@ -890,13 +948,10 @@
     });
     daysTrack.addEventListener('pointerup', (event) => {
       if (drag === null || event.pointerId !== drag.id) return;
-      const { dx, moving } = drag;
+      const { dx, moving, still } = drag;
       dropDrag();
+      if (!still) swallowClick();
       if (!moving || state === null) return;
-      draggedAway = true;
-      setTimeout(() => {
-        draggedAway = false;
-      }, 0);
       const width = dayNodes.get(state.day)?.getBoundingClientRect().width || 1;
       const by = Math.max(1, Math.round(Math.abs(dx) / width)) * (dx < 0 ? 1 : -1);
       const day = stepped(by);
@@ -908,8 +963,8 @@
       });
     }
     daysTrack.addEventListener('click', (event) => {
-      if (!draggedAway) return;
-      draggedAway = false;
+      if (!swallowing) return;
+      swallowing = false;
       event.stopImmediatePropagation();
     }, true);
     run.addEventListener('click', (event) => {

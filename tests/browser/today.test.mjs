@@ -388,6 +388,39 @@ for (const profile of profiles) {
       assert.equal(lines[lines.indexOf(`The day: ${pull(day.pull)}`) + 1], gods);
     });
 
+    check('an answer the page cannot draw is neither copied as text nor printed', async (page) => {
+      await page.clock.setFixedTime(NOW);
+      await page.addInitScript(() => {
+        window.__copied = [];
+        window.__printed = 0;
+        Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (text) => { window.__copied.push(text); } } });
+        window.print = () => { window.__printed += 1; };
+      });
+      await page.goto(new URL('/', process.env.EC_BASE_URL).href);
+      await setSettings(page);
+      // A relationship with a member in the luck pillar on a day with none: the answer
+      // passes its check, and In your chart cannot draw it.
+      await page.route('**/api/today', async (route) => {
+        const response = await route.fetch();
+        const value = await response.json();
+        value.layers.luck = null;
+        value.layers.day.relationships.push({
+          id: 'drawn-nowhere', kind: 'branch_clash', line: null,
+          members: [{ char: '子', pinyin: 'zi', pillar: 'luck' }, { char: '午', pinyin: 'wu', pillar: 'daily' }],
+        });
+        await route.fulfill({ response, json: value });
+      });
+      await page.goto(new URL(todayLink(), process.env.EC_BASE_URL).href);
+      await shown(page);
+      assert.match(await page.locator('#today-notice').textContent(), /could not be shown/);
+      assert.equal(await page.locator('#today-body').isHidden(), true);
+      assert.equal(await page.locator('#today-copy-text').getAttribute('aria-disabled'), 'true');
+      await page.locator('#today-copy-text').click({ force: true });
+      await page.locator('#today-print').click({ force: true });
+      await page.waitForTimeout(100);
+      assert.deepEqual(await page.evaluate(() => [window.__copied, window.__printed]), [[], 0]);
+    });
+
     check('a day that cannot be shown leaves nothing of the day before, its topic neither, and Retry asks again', async (page) => {
       await page.clock.setFixedTime(NOW);
       await recordToday(page);
@@ -674,6 +707,29 @@ for (const profile of profiles) {
       await page.waitForTimeout(100);
       assert.equal(await part(page, 'day'), stay);
       assert.equal(await page.locator('#today-days').getAttribute('class'), 'today-days');
+      // Up and down on a neighbour, and let go on it: a press that went more than 10px is
+      // no press, so the neighbour is not picked.
+      const side = await page.locator('.today-day[data-place="1"]').boundingBox();
+      await page.mouse.move(side.x + side.width / 2, side.y + side.height * 0.35);
+      await page.mouse.down();
+      for (const share of [0.45, 0.55, 0.65]) await page.mouse.move(side.x + side.width / 2 + 2, side.y + side.height * share);
+      await page.mouse.up();
+      await page.waitForTimeout(100);
+      assert.equal(await part(page, 'day'), stay);
+      // Let go off the days before its drag began: the next drag still moves them.
+      const area = await page.locator('#today-days').boundingBox();
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      await page.mouse.move(x - 15, Math.min(area.y + area.height + 40, page.viewportSize().height - 5));
+      await page.mouse.up();
+      await page.waitForTimeout(100);
+      assert.equal(await part(page, 'day'), stay);
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      for (const step of [20, 60, 120, 1.4 * box.width]) await page.mouse.move(x - step, y + 3);
+      await page.mouse.up();
+      await shown(page);
+      assert.equal(await part(page, 'day'), run[at + 2].date);
     });
 
     check('with reduced motion the days change in place, and still move', async (page) => {
@@ -691,6 +747,31 @@ for (const profile of profiles) {
       assert.equal(await part(page, 'day'), '2026-10-12');
     });
 
+    check('the days move at once through the run drawn for the reading shown alone: another person’s wait for their own answer', async (page) => {
+      await page.clock.setFixedTime(NOW);
+      const { answers, hold } = await recordToday(page);
+      await page.goto(new URL('/', process.env.EC_BASE_URL).href);
+      await setSettings(page, { partner: PARTNER });
+      await page.goto(new URL(todayLink(), process.env.EC_BASE_URL).href);
+      await shown(page);
+      // The partner's day asked for, and a step taken before it is drawn: the days on
+      // screen are the chart's own, so they stay until the partner's are drawn.
+      const releaseSwitch = hold(DAY);
+      const releaseStep = hold('2026-10-12');
+      await page.locator('#today-who [data-who="partner"]').click();
+      await page.waitForFunction(() => new URLSearchParams(location.hash.split('?')[1]).get('who') === 'partner');
+      await page.keyboard.press(']');
+      await page.waitForFunction(() => new URLSearchParams(location.hash.split('?')[1]).get('day') === '2026-10-12');
+      assert.equal(await page.locator('.today-day.is-centre').getAttribute('data-today-pick'), DAY);
+      releaseSwitch();
+      releaseStep();
+      await shown(page);
+      const { request, payload } = answers.at(-1);
+      assert.deepEqual([request.chart, request.date], ['partner', '2026-10-12']);
+      assert.equal(await page.locator('.today-day.is-centre').getAttribute('data-today-pick'), '2026-10-12');
+      assert.equal(await page.locator('.today-day.is-centre .today-day-pull').textContent(), pull(payload.run.find((day) => day.date === '2026-10-12')));
+    });
+
     check('a step goes through the run’s days: Apia’s skipped 30 December 2011 is passed over', async (page) => {
       await recordToday(page);
       await page.goto(new URL('/', process.env.EC_BASE_URL).href);
@@ -706,6 +787,38 @@ for (const profile of profiles) {
       await page.keyboard.press('ArrowLeft');
       await shown(page);
       assert.equal(await part(page, 'day'), '2011-12-29');
+    });
+
+    check('a drag past the run’s end counts the run’s days to its end, then calendar days: Apia’s skipped day once', async (page) => {
+      const { answers, hold } = await recordToday(page);
+      await page.goto(new URL('/', process.env.EC_BASE_URL).href);
+      await setSettings(page, { place: APIA });
+      // 5 January 2012: its run starts on 29 December 2011, then 31 December.
+      await page.goto(new URL(todayLink({ day: '2012-01-05' }), process.env.EC_BASE_URL).href);
+      await shown(page);
+      assert.deepEqual(answers.at(-1).payload.run.slice(0, 2).map((day) => day.date), ['2011-12-29', '2011-12-31']);
+      // Back through the run to 31 December while its answers are on their way, so the
+      // run drawn is still 5 January's.
+      const releases = ['2012-01-04', '2012-01-03', '2012-01-02', '2012-01-01', '2011-12-31'].map((day) => hold(day));
+      await page.locator('#today-days').focus();
+      for (let press = 0; press < 5; press += 1) await page.keyboard.press('ArrowLeft');
+      await page.waitForFunction(() => new URLSearchParams(location.hash.split('?')[1]).get('day') === '2011-12-31');
+      // Two days back by a drag: 29 December, the run's first, then 28 December.
+      const centre = await page.locator('.today-day.is-centre').boundingBox();
+      const area = await page.locator('#today-days').boundingBox();
+      const from = area.x + 30;
+      const to = from + 2 * centre.width;
+      assert.ok(to < page.viewportSize().width, `a two-day drag fits: ${to}`);
+      const y = centre.y + centre.height / 2;
+      await page.mouse.move(from, y);
+      await page.mouse.down();
+      for (const share of [0.1, 0.3, 0.6, 1]) await page.mouse.move(from + share * (to - from), y + 2);
+      await page.mouse.up();
+      await page.waitForFunction(() => new URLSearchParams(location.hash.split('?')[1]).get('day') !== '2011-12-31');
+      assert.equal(await part(page, 'day'), '2011-12-28');
+      for (const release of releases) release();
+      await shown(page);
+      assert.equal(answers.at(-1).request.date, '2011-12-28');
     });
 
     check('the pull on one scale, its ends and the five gods named in words; a pull past the scale is refused', async (page) => {
@@ -790,12 +903,45 @@ for (const profile of profiles) {
       const now = payload.hours.filter((hour) => hour.spans.some((span) => Date.parse(span.start) <= NOW.getTime() && NOW.getTime() < Date.parse(span.end)));
       assert.equal(now.length, 1);
       assert.deepEqual(wedges.filter((wedge) => wedge.now).map((wedge) => wedge.branch), [now[0].branch]);
+      // The table names it too, for a reader: its row is the current time.
+      const rows = await page.locator('.today-hours tbody tr').evaluateAll((trs) => trs.map((tr) => [tr.getAttribute('aria-current'), tr.querySelector('.today-hour-now')?.textContent ?? null]));
+      assert.deepEqual(rows, payload.hours.map((hour) => (hour === now[0] ? ['time', '· now'] : [null, null])));
       // Another day has no hour now.
       await page.locator('.today-step[data-today-step="1"]').click();
       await shown(page);
       assert.equal(await page.locator('.today-dial-hour.is-now').count(), 0);
+      assert.equal(await page.locator('.today-hours tbody tr[aria-current], .today-hour-now').count(), 0);
       // The table stays, every hour in it.
       assert.equal(await page.locator('.today-hours tbody tr').count(), 12);
+    });
+
+    check('the hour now, today’s dot and Today in the bar follow the clock while the day is shown', async (page) => {
+      await page.clock.install({ time: NOW });
+      const { answers } = await recordToday(page);
+      await page.goto(new URL('/', process.env.EC_BASE_URL).href);
+      await setSettings(page);
+      await page.goto(new URL(todayLink(), process.env.EC_BASE_URL).href);
+      await shown(page);
+      const { payload } = answers.at(-1);
+      const holding = (time) => payload.hours.findIndex((hour) => hour.spans.some((span) => Date.parse(span.start) <= time && time < Date.parse(span.end)));
+      const marked = () => page.evaluate(() => ({
+        dial: [...document.querySelectorAll('.today-dial-hour')].findIndex((wedge) => wedge.classList.contains('is-now')),
+        table: [...document.querySelectorAll('.today-hours tbody tr')].findIndex((row) => row.getAttribute('aria-current') === 'time'),
+        today: document.querySelector('.today-run-day.is-today')?.dataset.todayDay ?? null,
+        todayOff: document.querySelector('#today-steps [data-today-now]').disabled,
+      }));
+      const first = holding(NOW.getTime());
+      assert.notEqual(first, -1);
+      assert.deepEqual(await marked(), { dial: first, table: first, today: DAY, todayOff: true });
+      // On into the next hour: its wedge and its row are now's.
+      const next = (first + 1) % 12;
+      await page.clock.pauseAt(new Date(Date.parse(payload.hours[next].spans[0].start) + 60 * 1000));
+      await page.clock.runFor(31 * 1000);
+      assert.deepEqual(await marked(), { dial: next, table: next, today: DAY, todayOff: true });
+      // Past midnight where you are: tomorrow is today, and the day shown has no hour now.
+      await page.clock.pauseAt(new Date('2026-10-11T21:30:00Z'));
+      await page.clock.runFor(31 * 1000);
+      assert.deepEqual(await marked(), { dial: -1, table: -1, today: '2026-10-12', todayOff: false });
     });
 
     check('printed while a day is on its way, the page says so, and gives nothing of the day before', async (page) => {

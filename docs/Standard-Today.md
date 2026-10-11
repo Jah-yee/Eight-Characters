@@ -70,7 +70,10 @@ From the top:
   today, the hour the clock is in is outlined and named. Beside it the table, which
   says it all for screen readers and print: each hour on the clock at where you are,
   the Zi hour with its two spans, its ties to the day and its call, Protect, Mixed or
-  Avoid, by word and by mark. An hour with no tie has no call.
+  Avoid, by word and by mark, and the hour now named "now", its row the current time.
+  An hour with no tie has no call. The hour now, today's dot in the run and the bar's
+  Today follow the clock while the page is open: past an hour's end or midnight, they
+  change within half a minute, and at once when the page is seen again.
 
 The day's page gives, for each of the four pillars, the parts of its pull (each
 character, its element, its weight, how much it counts and its value) and the canon's
@@ -84,20 +87,24 @@ Every way of moving goes to the run's next or previous day, in date order, so a 
 the place's clocks skipped is passed over (Apia, 30 December 2011): `[` and `]` from
 anywhere, the bar's steps, Left and Right while the days have focus (Home and End go to
 the run's first and last day), a press on a neighbour, a pick in the run, and a swipe or
-drag on the days. Beyond the run, or with none drawn (a day the API refused), a step is
-a calendar day. A day the API refuses, near the first and last of the engine's years,
-shows its reason.
+drag on the days. A step past the run's end counts the run's days to that end, then
+calendar days. With no run drawn (a day the API refused), a step is a calendar day. A
+day the API refuses, near the first and last of the engine's years, shows its reason.
 
 A move draws the days at once from the run, and the date in the bar; the rest of the
 page is dimmed until the day's own answer is drawn. Keys, presses and picks ask at
 once; a drag asks once, when it is let go. Only the answer to the latest request is
-drawn.
+drawn. The run drawn leads only its own reading: while another chart, language or
+person is on its way, or Today is opened again (its settings may have changed), the
+days wait for that answer, and a step until then is a calendar day.
 
 A drag follows the pointer that started it, once it has gone 40px across (more than a
 touch hold's 10px), and never from the screen's left edge, which is iOS's Back. Let go,
 the day moves by as many days as it went, one at least; less than 40px moves nothing.
-Up and down stays the page's scrolling. A cancel, a lost capture or a second pointer
-moves nothing, and the click that ends a drag opens nothing. A step slides the days in
+Up and down stays the page's scrolling. A press that went more than 10px, up and down
+included, is no press: the click that ends it opens nothing. A cancel, a lost capture
+or a second pointer moves nothing; a mouse let go off the days before its drag began
+leaves the next drag as it would be. A step slides the days in
 280ms; a pick far away slides one step's distance, never through the days between.
 With reduced motion, the days change in place.
 
@@ -173,6 +180,7 @@ four pillars, the couple, In your chart, the hours' table (not the dial), and th
 as a list, each day with its band as a word; the cards and the scale keep their
 colours. Until a day's own answer is drawn, Copy as text and Print say they are
 unavailable, so neither gives one day's numbers under another's date; printed anyway
-(from the browser), the page gives the bar and says the day is still being read.
+(from the browser), the page gives the bar and says the day is still being read. An
+answer the page cannot draw is neither copied nor printed: the page says why instead.
 
 See [browser regression tests](../tests/browser/README.md): `today.test.mjs`.
