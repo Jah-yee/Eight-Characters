@@ -757,6 +757,10 @@ for (const profile of profiles) {
       await shown(page);
       assert.equal(await part(page, 'day'), run[at + 3].date);
       // A drag on a neighbour whose capture is lost, let go on that neighbour: no pick.
+      await page.evaluate(() => {
+        window.__pointer = null;
+        document.addEventListener('pointerdown', (event) => { window.__pointer = event.pointerId; }, { capture: true, once: true });
+      });
       const near = await page.locator('.today-day[data-place="1"]').boundingBox();
       const nx = near.x + Math.min(20, near.width / 4);
       const ny = near.y + near.height / 2;
@@ -764,7 +768,9 @@ for (const profile of profiles) {
       await page.mouse.down();
       for (const step of [15, 30, 45]) await page.mouse.move(nx + step, ny + 2);
       assert.equal(await page.locator('#today-days').getAttribute('class'), 'today-days is-dragging');
-      await page.evaluate(() => document.querySelector('.today-days-track').releasePointerCapture(1));
+      // Released by the page: the browser applies it at the pointer's next event.
+      await page.evaluate(() => document.querySelector('.today-days-track').releasePointerCapture(window.__pointer));
+      await page.mouse.move(nx + 46, ny + 2);
       await page.mouse.up();
       await page.waitForTimeout(100);
       assert.equal(await part(page, 'day'), run[at + 3].date);
