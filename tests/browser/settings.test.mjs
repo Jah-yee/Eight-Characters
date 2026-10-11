@@ -228,6 +228,23 @@ for (const profile of profiles) {
       assert.equal(kept.name, null);
     });
 
+    check('a place picked while the settings cannot be read is not saved, and the page says why', async (page) => {
+      await reset(page);
+      await page.route('**/api/location_suggest', (route) => route.fulfill({ json: { suggestions: [HELSINKI] } }));
+      const refuse = (route) => route.fulfill({ status: 500, json: { detail: 'Stopped by the test.' } });
+      await page.route('**/api/account/settings', refuse);
+      await page.goto(new URL('/#settings', process.env.EC_BASE_URL).href);
+      await page.locator('#settings-status').waitFor({ state: 'visible' });
+      assert.equal(await page.locator('#settings-status').textContent(), 'Stopped by the test.');
+      await page.locator('#settings-location').fill('Helsinki');
+      await page.locator('#settings-location-suggestions .location-suggestion').click();
+      await page.locator('#settings-place-save').click();
+      await page.waitForFunction(() => document.getElementById('settings-status').textContent === 'The settings could not be loaded.');
+      assert.equal(await page.locator('#settings-status').isVisible(), true);
+      await page.unroute('**/api/account/settings', refuse);
+      assert.equal((await read(page)).place, null);
+    });
+
     check('a place picked while the one before is saved stays picked', async (page) => {
       await reset(page);
       await page.route('**/api/location_suggest', (route) => route.fulfill({ json: { suggestions: [HELSINKI, TROMSO] } }));

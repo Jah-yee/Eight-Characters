@@ -154,9 +154,10 @@
         // and is neither taken nor drawn, and a refusal asks for no sign-in.
         const at = generation;
         try {
+          // No settings read and drawn, none shown: nothing is changed from controls left
+          // over, nor from a page that could not read them.
+          if (settings === null || from < 0) return t('settings_load_error');
           if (from !== basis) return replaced;
-          // No settings read, none shown: nothing is changed from controls left over.
-          if (settings === null) return t('settings_load_error');
           const value = checked(await call(method, path, { ...body, key: settings.key, updated_at: settings.updated_at }));
           if (at !== generation) return t('account_session_ended');
           settings = value;
