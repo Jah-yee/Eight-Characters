@@ -44,4 +44,5 @@ jobs:
             tests.test_api_evolution_explorer_endpoint \
             tests.test_api_evolution_controls_endpoint \
             tests.test_schools \
+            tests.test_structure \
             tests.test_api_today
