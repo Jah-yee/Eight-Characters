@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.49.1
+
+### Fixed
+- **A touch hold is its finger's alone.** Holding a control opens its help after half
+  a second unless that finger moves, lifts or is cancelled first; another pointer's
+  events no longer end the hold. After a scroll, WebKit moves its mouse pointer back to
+  where the last tap was, and that move cancelled the hold: on phones, holding a luck
+  arrow just after tapping the other one opened no help.
+
+### Changed
+- **The Finnish names are confirmed**: the schools' names and summaries, and Today's
+  and Settings' labels. `GET /api/schools` answers `finnish_provisional: false`, and
+  Settings no longer says the Finnish is provisional.
+
+### Tests
+- `controls.test.mjs`: a control held while another pointer moves, lifts and cancels far
+  away opens its help, and the finger's own move still closes it.
+
 ## 0.49.0
 
 Today and Settings, the pages: the day of the chart on screen, and what the account
