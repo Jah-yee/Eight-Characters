@@ -215,12 +215,6 @@ class TestNamingRules(unittest.TestCase):
         self.assertEqual(ten_god('丙', '壬'), 'seven_killings')
 
 
-    LUCK_CASES,
-    Facts,
-    Verdict,
-    luck_reading,
-)
-
 G: Final[dict[str, TenGodName]] = {
     'friend': 'friend',
     'rob': 'rob_wealth',
