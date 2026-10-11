@@ -416,11 +416,21 @@ class Facts:
     # Day Master's own stem counts as its Friend. In hundredths.
     tally: Mapping[TenGodName, int]
 
+    @property
+    def free_gods(self) -> Gods:
+        """The gods of the shown stems no stem beside them combines away: such a pair is
+        taken away (戊癸作合，财印两失; 壬财丁印，二者相合，仍以孤官无辅论)."""
+        bound = _bound(self.shown)
+        return tuple(
+            god for index, god in enumerate(self.shown_gods) if index not in bound
+        )
+
     def show(self, gods: Gods) -> bool:
-        return any(god in gods for god in self.shown_gods)
+        """Shown in a stem that is not combined away."""
+        return any(god in gods for god in self.free_gods)
 
     def shown_count(self, gods: Gods) -> int:
-        return sum(god in gods for god in self.shown_gods)
+        return sum(god in gods for god in self.free_gods)
 
     def weight(self, gods: Gods) -> int:
         return sum(self.tally[god] for god in gods)
@@ -434,7 +444,8 @@ class Facts:
         return self.weight(SUPPORT) * 2 < sum(self.tally.values())
 
     def combined(self, these: Gods, those: Gods) -> bool:
-        """A shown stem of these gods combines (五合) with a shown stem of those."""
+        """A shown stem of these gods combines (五合) with a shown stem of those: the
+        cases about a combination ask this, not whether the combined god shows."""
         pairs = list(zip(self.shown, self.shown_gods, strict=True))
         return any(
             frozenset((stem_a, stem_b)) in COMBINING
@@ -598,7 +609,7 @@ _DIRECT_OFFICER: Final[tuple[LuckCase, ...]] = (
     LuckCase(
         'killings_combined_by_rob',
         '其命中用劫合煞，则财运可行，伤食可行，身旺，印绶亦可行，只不过复露七煞。',
-        lambda f: f.show(KILLINGS) and f.combined(ROB, KILLINGS),
+        lambda f: f.combined(ROB, KILLINGS),
         lambda f: [
             rule(WEALTH, 'favourable', '可行'),
             rule(OUTPUT, 'favourable', '可行'),
@@ -610,7 +621,7 @@ _DIRECT_OFFICER: Final[tuple[LuckCase, ...]] = (
     LuckCase(
         'killings_combined_by_hurting_officer',
         '若命用伤官合煞，则伤食与财俱可行，而不宜逢印矣。',
-        lambda f: f.show(KILLINGS) and f.combined(HURTING, KILLINGS),
+        lambda f: f.combined(HURTING, KILLINGS),
         lambda f: [
             rule(OUTPUT + WEALTH, 'favourable', '俱可行'),
             rule(RESOURCE, 'against', '不宜'),
@@ -1127,11 +1138,7 @@ _JIAN_LU_YUE_JIE: Final[tuple[LuckCase, ...]] = (
     LuckCase(
         'killings_combined_wealth_kept',
         '若用煞而带财，命中合煞存财，则伤食为宜，财运不忌，透官无虑，身旺亦亨。',
-        lambda f: (
-            f.show(KILLINGS)
-            and f.show(WEALTH)
-            and f.combined(tuple(_ALL_GODS), KILLINGS)
-        ),
+        lambda f: f.show(WEALTH) and f.combined(tuple(_ALL_GODS), KILLINGS),
         lambda f: [
             rule(OUTPUT, 'favourable', '为宜'),
             rule(WEALTH, 'idle', '不忌'),
@@ -1142,9 +1149,7 @@ _JIAN_LU_YUE_JIE: Final[tuple[LuckCase, ...]] = (
     LuckCase(
         'wealth_combined_killings_kept',
         '若命中合财存煞，而用食制，煞轻则助煞，食轻则助食则已。',
-        lambda f: (
-            f.show(KILLINGS) and f.show(WEALTH) and f.combined(tuple(_ALL_GODS), WEALTH)
-        ),
+        lambda f: f.show(KILLINGS) and f.combined(tuple(_ALL_GODS), WEALTH),
         lambda f: (
             [rule(KILLINGS, 'favourable', '助煞')]
             if f.heavier(OUTPUT, KILLINGS)

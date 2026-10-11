@@ -988,6 +988,17 @@ class TestLuckCases(unittest.TestCase):
         self.assertEqual(verdicts['friend'], 'against')
         self.assertEqual(verdicts['rob_wealth'], 'idle')
 
+    def test_stems_combined_side_by_side_are_taken_away(self) -> None:
+        # 论正官: 壬戌、丁未、戊?、乙卯，杂气正官，透干会支……壬财丁印，二者相合，仍以孤官无辅论.
+        # The Wealth and Resource that combine are taken away, so no case of a Direct
+        # Officer using Wealth and Resource applies: the chart is read by the general
+        # line, as a lone Officer.
+        reading = read('壬戌 丁未 戊申 乙卯')
+        self.assertEqual(reading['naming']['structure'], 'direct_officer')  # type: ignore[index]
+        self.assertEqual(reading['case'], 'general')
+        # Apart, year and hour, they are not taken away.
+        self.assertEqual(read('壬戌 乙未 戊申 丁巳')['case'], 'wealth_and_resource')
+
     def test_every_case_is_tested(self) -> None:
         tested = {(structure, case) for structure, _, case, _ in CASES}
         for structure, cases in LUCK_CASES.items():
