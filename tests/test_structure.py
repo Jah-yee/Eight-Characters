@@ -999,6 +999,13 @@ class TestLuckCases(unittest.TestCase):
         # Apart, year and hour, they are not taken away.
         self.assertEqual(read('壬戌 乙未 戊申 丁巳')['case'], 'wealth_and_resource')
 
+    def test_a_case_that_holds_either_way_sees_a_combined_god(self) -> None:
+        # 禄劫而官煞并出，不论合煞留官: the year's 乙 combines the month's 庚 Killings away,
+        # and the case still holds, with the 辛 Officer kept.
+        self.assertEqual(read('乙丑 庚寅 甲子 辛未')['case'], 'officer_and_killings')
+        # 论建禄月劫's 一平章 (辛丑 庚寅 甲辰 乙亥), 合煞留官 across the Day Master.
+        self.assertEqual(read('辛丑 庚寅 甲辰 乙亥')['case'], 'officer_and_killings')
+
     def test_every_case_is_tested(self) -> None:
         tested = {(structure, case) for structure, _, case, _ in CASES}
         for structure, cases in LUCK_CASES.items():

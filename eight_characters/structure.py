@@ -433,6 +433,11 @@ class Facts:
     def shown_count(self, gods: Gods) -> int:
         return sum(god in gods for god in self.free_gods)
 
+    def shown_at_all(self, gods: Gods) -> bool:
+        """Shown in a stem, combined away or not: the cases that hold either way ask
+        this (不论合煞制煞, 不论去官留煞, 不论去官去煞, 不论合煞留官)."""
+        return any(god in gods for god in self.shown_gods)
+
     def weight(self, gods: Gods) -> int:
         return sum(self.tally[god] for god in gods)
 
@@ -703,7 +708,7 @@ _WEALTH: Final[tuple[LuckCase, ...]] = (
     LuckCase(
         'killings',
         '财带七煞。不论合煞制煞，运喜食伤身旺之方。',
-        lambda f: f.show(KILLINGS),
+        lambda f: f.shown_at_all(KILLINGS),
         lambda f: [rule(OUTPUT + COMPANIONS, 'favourable', '喜')],
     ),
     LuckCase(
@@ -916,7 +921,7 @@ _SEVEN_KILLINGS: Final[tuple[LuckCase, ...]] = (
     LuckCase(
         'officer',
         '煞带正官，不论去官留煞，去煞留官，身轻则喜助身，食轻则喜助食。',
-        lambda f: f.show(OFFICER),
+        lambda f: f.shown_at_all(OFFICER),
         lambda f: (
             ([rule(COMPANIONS, 'favourable', '喜')] if f.weak else [])
             + (
@@ -1087,7 +1092,7 @@ _YANG_BLADE: Final[tuple[LuckCase, ...]] = (
     LuckCase(
         'officer_and_killings',
         '阳刃而官煞并出，不论去官去煞，运喜制伏，身旺亦利，财地官乡反为不吉也。',
-        lambda f: f.show(OFFICER) and f.show(KILLINGS),
+        lambda f: f.shown_at_all(OFFICER) and f.shown_at_all(KILLINGS),
         lambda f: [
             rule(OUTPUT, 'favourable', '喜'),
             rule(COMPANIONS, 'favourable', '亦利'),
@@ -1128,7 +1133,7 @@ _JIAN_LU_YUE_JIE: Final[tuple[LuckCase, ...]] = (
     LuckCase(
         'officer_and_killings',
         '禄劫而官煞并出，不论合煞留官，存官制煞，运喜伤食，比肩亦宜，印绶未为良图，财官亦非福运。',
-        lambda f: f.show(OFFICER) and f.show(KILLINGS),
+        lambda f: f.shown_at_all(OFFICER) and f.shown_at_all(KILLINGS),
         lambda f: [
             rule(OUTPUT, 'favourable', '喜'),
             rule(FRIEND, 'favourable', '亦宜'),
