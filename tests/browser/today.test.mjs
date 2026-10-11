@@ -287,6 +287,27 @@ for (const profile of profiles) {
       assert.equal(await part(page, 'day'), '2026-10-12');
     });
 
+    check('Chart · Today hands the focus across, so each page’s keys act at once', async (page) => {
+      await page.clock.setFixedTime(NOW);
+      await recordToday(page);
+      await openLink(page, `/#chart?${chartParams()}`, { place: HELSINKI });
+      await setSettings(page);
+      await page.locator('#page-switch [data-page="today"]').focus();
+      await page.keyboard.press('Enter');
+      await shown(page);
+      await page.waitForFunction(() => document.activeElement?.matches('#today-page-switch [data-page="today"]'));
+      await page.keyboard.press(']');
+      await shown(page);
+      assert.equal(await part(page, 'day'), '2026-10-12');
+      await page.locator('#today-page-switch [data-page="chart"]').focus();
+      await page.keyboard.press('Enter');
+      await page.locator('#chart-view').waitFor({ state: 'visible' });
+      await page.waitForFunction(() => document.activeElement?.matches('#page-switch [data-page="chart"]'));
+      await page.keyboard.press('?');
+      assert.equal(await page.locator('#keys-dialog').isVisible(), true);
+      assert.equal(await page.locator('#keys-dialog .key-row-chart').first().isVisible(), true);
+    });
+
     check('the day in another language opens the chart in it', async (page) => {
       await page.clock.setFixedTime(NOW);
       const { answers } = await recordToday(page);

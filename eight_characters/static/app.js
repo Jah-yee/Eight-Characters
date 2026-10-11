@@ -1692,7 +1692,12 @@ document.addEventListener('DOMContentLoaded', () => {
     format: { parseWallClock, date: formatDate, time: formatTime },
     account,
     go: (hash, method) => history[method](null, '', `${formAddress()}${hash}`),
-    onChart: (params) => goToChart(params),
+    // Today's Chart hands its focus to the chart's own, so the chart's keys act at once.
+    onChart: async (params) => {
+      history.pushState(null, '', `${formAddress()}${CHART_ROUTE}${params}`);
+      await followAddress();
+      if (!chartView.classList.contains('hidden')) pageSwitch.querySelector('[data-page="chart"]').focus();
+    },
     onSettings: () => openSettings(),
     onEdit: (params) => goToChart(params),
     onLanguage: (lang) => {
@@ -1712,12 +1717,15 @@ document.addEventListener('DOMContentLoaded', () => {
       showToast(err.message, true);
       return;
     }
-    if (shown !== chosen || chosen === null) return;
+    // Only from the chart still on screen.
+    if (shown !== chosen || chosen === null || chartView.classList.contains('hidden')) return;
     const day = dateIn(kept.place?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
     const params = linkParams(chosen.request, chosen.place);
     params.set('day', day);
     history.pushState(null, '', `${formAddress()}${TODAY_ROUTE}${params}`);
-    followAddress();
+    await followAddress();
+    // The chart's Today hands its focus to the day's own, so the day's keys act at once.
+    if (today.isShown()) todayView.querySelector('#today-page-switch [data-page="today"]').focus();
   };
   pageSwitch.addEventListener('click', (event) => {
     if (event.target.closest('button[data-page="today"]')) openToday();

@@ -83,7 +83,9 @@ removed elsewhere (or no longer charts), closes, and the page says why.
 While the page has focus and no field does: `[` and `]` the day before and after, N
 today where you are, Escape closes a topic, ? lists the day's keys. A topic, a day of the
 run or an action chosen from the keyboard keeps the focus on its button once the day is
-drawn again; Today, which is then unavailable, hands it to the day's heading. Brackets are typed with
+drawn again; Today, which is then unavailable, hands it to the day's heading. Chart ·
+Today hands the focus across: to Today on the day's bar, or to Chart on the chart's, so
+each page's keys act at once. Brackets are typed with
 Alt or AltGr on many keyboards; a held key steps once. The commands (⌘K or Ctrl+K) hold
 the steps, the partner's day, the topics, the chart, Copy link, Copy as text and Print
 (once the day is drawn) and Settings.
