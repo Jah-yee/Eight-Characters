@@ -2501,7 +2501,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.addEventListener('keydown', (event) => {
     if (event.defaultPrevented || chartView.classList.contains('hidden') || keysDialog.open || paletteDialog.open
-      || account.isOpen()) return;
+      || account.isOpen() || libraryDialog.open || saveChartDialog.open) return;
     if (event.key.toLowerCase() === 'k' && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey) {
       event.preventDefault();
       palette.open(chartCommands());
