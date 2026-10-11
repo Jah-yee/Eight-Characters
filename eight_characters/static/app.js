@@ -519,7 +519,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // convention) and named in the address.
   let shown = null;
   // The request of the chart whose birth the form holds: the form is filled with each
-  // chart shown, and holds none once it is reset. A chart made from it again (Edit,
+  // chart shown and each chart link followed, and holds none once it is reset. A chart made from it again (Edit,
   // then Create chart) keeps that chart's Zi-hour convention, and its pass of a
   // repeated hour while its day, time and zone stay as they were.
   let formChart = null;
@@ -953,7 +953,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // answers are not taken. What the page draws from the account's settings is read and
     // drawn again, for this one.
     onAccountChanged: () => {
-      settingsPage.forget(requiredTranslation('account_changed'));
+      settingsPage.forget(requiredTranslation('account_taken'));
       library.forget();
       if (saveChartDialog.open) saveChartDialog.close();
       if (location.hash.startsWith(SAVE_ROUTE)) {
@@ -966,7 +966,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         followAddress();
       } else if (!settingsView.classList.contains('hidden')) {
-        settingsPage.show(requiredTranslation('account_changed'));
+        settingsPage.show(requiredTranslation('account_taken'));
       }
       today.renew();
       if (shown !== null && !chartView.classList.contains('hidden')) nameChart();
@@ -1867,8 +1867,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // read then: a save is made from them.
   let chartToSave = null;
   let chartBasis = null;
-  // A save on its way: a second press does not save twice.
-  let chartSaving = false;
+  // Each opening of the dialog, and the opening whose save is on its way: a second press
+  // saves nothing more, and a save outlived by its opening (closed, or the dialog opened
+  // again, for another account say) is said, and changes nothing of the dialog shown.
+  let chartOpening = null;
+  let chartSaving = null;
   // A name is one line of printable text, up to 80 characters, or none.
   const nameProblem = (name) => (name.length > 80 || /\p{Cc}/u.test(name) ? requiredTranslation('save_chart_name_error') : null);
   const openSaveChart = async () => {
@@ -1903,6 +1906,7 @@ document.addEventListener('DOMContentLoaded', () => {
     saveChartChart.textContent = chosen.heading;
     saveChartName.value = '';
     saveChartStatus.textContent = '';
+    chartOpening = {};
     saveChartDialog.showModal();
     saveChartName.focus();
   };
@@ -1910,10 +1914,12 @@ document.addEventListener('DOMContentLoaded', () => {
   saveChartDialog.addEventListener('close', () => {
     chartToSave = null;
     chartBasis = null;
+    chartOpening = null;
   });
   saveChartForm.addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (chartToSave === null || chartSaving) return;
+    const opening = chartOpening;
+    if (chartToSave === null || opening === null || chartSaving === opening) return;
     const name = saveChartName.value.trim();
     const problemWithName = nameProblem(name);
     if (problemWithName !== null) {
@@ -1924,14 +1930,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // The chart the dialog named when it opened, whatever is on screen now.
     const birth = { ...birthOfChart(chartToSave), ...(name ? { name } : {}) };
     let problem;
-    chartSaving = true;
+    chartSaving = opening;
     try {
       problem = await settingsPage.saveChart(birth, {}, chartBasis);
     } catch (err) {
       console.error(err);
       problem = err.message;
     } finally {
-      chartSaving = false;
+      if (chartSaving === opening) chartSaving = null;
+    }
+    if (opening !== chartOpening) {
+      showToast(problem ?? requiredTranslation('save_chart_saved'), problem !== null);
+      return;
     }
     if (problem === null) {
       saveChartDialog.close();
@@ -2366,6 +2376,9 @@ document.addEventListener('DOMContentLoaded', () => {
     setFieldError(dateInput, dateStatus, '');
     setFieldError(timeInput, timeStatus, '');
     pickPlace(link.place);
+    // The form holds the link's birth now, drawn or not: a chart that cannot be drawn
+    // leaves it there to be corrected, with its own convention and pass.
+    formChart = chartRequest(link);
     // Meanwhile a chart on screen takes no clicks, and the form says it is creating one.
     const onChart = !chartView.classList.contains('hidden');
     try {

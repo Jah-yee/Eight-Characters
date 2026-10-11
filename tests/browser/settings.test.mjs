@@ -769,6 +769,16 @@ for (const profile of profiles) {
       await drawn();
       assert.equal(asked.at(-1).time, '12:00');
       assert.equal(asked.at(-1).location.fold, undefined);
+      // A link whose chart cannot be drawn (03:30 on 28 March 2021, which Helsinki's clocks
+      // skipped) leaves its own birth in the form: corrected, it is made as that link's
+      // chart, not with the convention of the chart shown before it.
+      await opened(chartLink({ date: '2021-06-15', time: '00:50', zi: 'whole_zi_23' }), '2021');
+      await openLink(page, chartLink({ date: '2021-03-28', time: '03:30' }), { place: HELSINKI, success: false });
+      await page.locator('#time').fill('12:00');
+      await page.locator('#create-chart-btn').click();
+      await drawn();
+      assert.equal(asked.at(-1).date, '2021-03-28');
+      assert.equal(asked.at(-1).conventions?.zi_convention, undefined);
       // New chart begins anew: the convention of the chart before is not carried over.
       await opened(chartLink({ date: '2021-06-15', time: '00:50', zi: 'whole_zi_23' }), '2021');
       await page.locator('#new-chart-btn').click();
@@ -947,7 +957,7 @@ describe(`${engineName} / settings signed out`, { concurrency: false }, () => {
     // the first, is refused, and the page takes the second.
     await page.context().addCookies(second.cookies);
     await page.locator('#settings-favourable-climate').click();
-    await page.waitForFunction(() => document.getElementById('settings-status').textContent === 'The account changed meanwhile: nothing was done.');
+    await page.waitForFunction(() => document.getElementById('settings-status').textContent === 'This browser is signed in to another account now.');
     assert.match(await page.locator('#settings-charts-body').textContent(), /Second keeps/);
     assert.doesNotMatch(await page.locator('#settings-view').textContent(), /First keeps/);
     assert.equal(await page.locator('input[name="settings-favourable"]:checked').getAttribute('value'), 'support');

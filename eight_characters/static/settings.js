@@ -730,6 +730,7 @@
         basis += 1;
         replaced = why;
         ended = why;
+        latest = null;
         renaming = null;
         mineBody.innerHTML = '';
         couplesBody.innerHTML = '';
