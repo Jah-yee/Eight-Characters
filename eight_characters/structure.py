@@ -204,9 +204,11 @@ def name_structure(pillars: Mapping[str, tuple[str, str]]) -> Naming:
     1. The month at the Day Master's prosperity is Jian Lu Yue Jie (论建禄月劫: 建禄者，
        月建逢禄堂也……建禄与月劫，可同一格), and a yang Day Master's blade, the branch
        after it, is Yang Blade (论阳刃: 禄前一位，惟五阳有之). A full three-way
-       combination with the month whose element shows in a stem turns either into
+       combination with a blade month whose element shows in a stem turns it into
        that element's god, unless it is the Day Master's own (若戊生午月，干透丙火，
-       支会火局，则化刃为印).
+       支会火局，则化刃为印). The prosperity stays: its combination gives it a use
+       (皆以透干会支，别取财官煞食为用), as 金水相涵 (庚生申月……子辰会局) is listed
+       with 禄劫用伤食.
     2. A mixed month (辰戌丑未) is named by what shows of it: 透干会取其清者用之. A
        hidden stem shows when a stem of its element does (甲透未库), and the shown
        stem's own god names the structure (辰中暗煞，壬以透之); two shown stems that
@@ -241,7 +243,7 @@ def name_structure(pillars: Mapping[str, tuple[str, str]]) -> Naming:
     )
     if own_month is not None:
         combination = full_combination(month, branches)
-        if combination is not None:
+        if own_month == 'blade' and combination is not None:
             stem = hidden_stems_lookup()[combination[1]][0]
             god = ten_god(day_master, stem)
             if god not in _OWN and any(
@@ -498,8 +500,11 @@ def unreadable(
       stem or joined in a full three-way combination (必看四柱有无财官煞食透干会支，另取
       用神). Those are the outer structures (外格), which the school does not judge.
     - **Broken** (论用神成败救应): 建禄月劫，无财官，透煞印，建禄月劫之格败也 (a Jian Lu
-      month with Killings or Resource shown and no Wealth, Direct Officer or Output to
-      use), and 阳刃无官煞，刃格败也 (a Yang Blade with no Officer or Killings shown).
+      month showing both Killings and Resource, with no Wealth or Direct Officer, nor
+      Output to control the Killings, shown or held as a branch's main qi), and
+      阳刃无官煞，刃格败也 (a Yang Blade with no Officer or Killings). 透煞印 is both:
+      the text reads Lu months that show Resource alone as outer (吴相公's 曲直, 郭统制's
+      井拦), and 徐乐吾 reads the line as 煞生印，转而生身.
     - **Following**: no Companion or Resource anywhere but the Day Master's own stem, as
       Support and restrain finds it (论杂格: 弃命从财, 弃命从煞).
     - **Transformation** (从化): the Day Master combined with the month or hour stem
@@ -516,11 +521,13 @@ def unreadable(
             for combination in COMBINATIONS
         )
         if not facts.show(OUTPUT + WEALTH + OFFICERS) and not joined:
-            return 'broken' if facts.show(RESOURCE) else 'month_without_use'
+            return 'month_without_use'
         # A god held as a branch's main qi counts too: 官煞藏而不露 (论阳刃).
         if (
             structure == 'jian_lu_yue_jie'
             and not joined
+            and facts.show(KILLINGS)
+            and facts.show(RESOURCE)
             and not facts.present(WEALTH + OFFICER + OUTPUT)
         ):
             return 'broken'

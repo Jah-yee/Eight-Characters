@@ -1060,8 +1060,10 @@ class TestOuterStructures(unittest.TestCase):
         self.assertEqual(reading['outer'], 'following')
 
     def test_broken_structures_are_not_read(self) -> None:
-        # 建禄月劫，无财官，透煞印，建禄月劫之格败也.
-        self.assertEqual(read('庚子 甲寅 甲子 甲子')['outer'], 'broken')
+        # 建禄月劫，无财官，透煞印，建禄月劫之格败也: Killings and Resource both shown.
+        self.assertEqual(read('庚子 甲寅 甲子 壬申')['outer'], 'broken')
+        # With the Resource only held in the branches, the Killings are read.
+        self.assertIsNone(read('庚子 甲寅 甲子 甲子')['outer'])
         # 阳刃无官煞，刃格败也: also 论杂格's 冲子官 chart, whose Blade has no Officer or
         # Killings shown or held as a branch's main qi.
         self.assertEqual(read('戊辰 丁卯 甲子 甲子')['outer'], 'broken')
