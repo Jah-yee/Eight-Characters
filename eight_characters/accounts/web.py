@@ -17,7 +17,7 @@ from datetime import UTC, datetime, timedelta
 from email.utils import parseaddr
 from functools import lru_cache
 from pathlib import Path
-from typing import Annotated, Any, Final, Literal
+from typing import Annotated, Any, Final, Literal, TypeVar
 from urllib.parse import urlsplit
 
 import httpx
@@ -63,7 +63,15 @@ from eight_characters.accounts.signin import (
     SignInError,
     TooManyRequests,
 )
-from eight_characters.accounts.store import AccountStore, SettingsChanged, UnknownUser
+from eight_characters.accounts.store import (
+    AccountStore,
+    ChartLimit,
+    CoupleLimit,
+    SettingsChanged,
+    UnknownChart,
+    UnknownCouple,
+    UnknownUser,
+)
 from eight_characters.first_chart import (
     ChartPillar,
     FirstChartInputError,
@@ -559,6 +567,24 @@ class SettingsRequest(BaseModel):
     updated_at: str | None
 
 
+class MyChartRequest(BaseModel):
+    # Which saved chart is the person's own, by its id.
+    model_config = ConfigDict(extra='forbid', strict=True)
+
+    key: str
+    updated_at: str | None
+    chart: str
+
+
+class CoupleRequest(BaseModel):
+    # Two saved charts to pair, by their ids.
+    model_config = ConfigDict(extra='forbid', strict=True)
+
+    key: str
+    updated_at: str | None
+    charts: list[str] = Field(min_length=2, max_length=2)
+
+
 class SchoolsRequest(BaseModel):
     # Each school left out stays as it is; one sent as null follows the default again.
     model_config = ConfigDict(extra='forbid', strict=True)
@@ -585,9 +611,26 @@ class ChartView(TypedDict):
     problem: str | None
 
 
+class SavedChartView(ChartView):
+    id: str
+
+
+class CoupleView(TypedDict):
+    id: str
+    # The two charts, by their ids, in the order the couple was formed.
+    charts: list[str]
+
+
 class SettingsView(TypedDict):
-    # A partner's chart; Today's own is the chart the page is on.
-    partner: ChartView | None
+    # The charts the account keeps, in the order they were saved: a new one comes
+    # last. Each with its pillars, as a partner's chart had them.
+    charts: list[SavedChartView]
+    # The person's own chart, by its id; None until one is marked.
+    my_chart: str | None
+    couples: list[CoupleView]
+    # A partner's chart kept from before accounts kept charts: it pairs with the
+    # person's own chart when one is first marked.
+    pending_partner: str | None
     place: dict[str, Any] | None
     # The school Today follows for each setting, and the one chosen: None where the
     # account follows the default.
@@ -596,6 +639,11 @@ class SettingsView(TypedDict):
     # When the settings last changed; None for an account that has set nothing.
     updated_at: str | None
     key: str
+
+
+class SavedReply(SettingsView):
+    # The id the chart was just saved under.
+    saved: str
 
 
 router = APIRouter(prefix='/api/account')
@@ -864,11 +912,14 @@ def _chosen_view(chosen: ChosenSchools) -> dict[str, str | None]:
 
 
 def settings_view(user: User, settings: Settings | None) -> SettingsView:
-    """What the page is told of the account's settings, a partner's chart with its
+    """What the page is told of the account's settings, each saved chart with its
     pillars; the defaults when it has set nothing."""
     if settings is None:
         return {
-            'partner': None,
+            'charts': [],
+            'my_chart': None,
+            'couples': [],
+            'pending_partner': None,
             'place': None,
             'schools': _schools_view(DEFAULT_SCHOOLS),
             'chosen': _chosen_view(NO_CHOICE),
@@ -876,7 +927,14 @@ def settings_view(user: User, settings: Settings | None) -> SettingsView:
             'key': account_key(user),
         }
     return {
-        'partner': None if settings.partner is None else _chart_view(settings.partner),
+        'charts': [
+            {**_chart_view(chart.birth), 'id': chart.id} for chart in settings.charts
+        ],
+        'my_chart': settings.my_chart,
+        'couples': [
+            {'id': couple.id, 'charts': list(couple.charts)} for couple in settings.couples
+        ],
+        'pending_partner': settings.pending_partner,
         'place': None if settings.place is None else place_value(settings.place),
         'schools': _schools_view(settings.schools.effective()),
         'chosen': _chosen_view(settings.schools),
@@ -885,35 +943,72 @@ def settings_view(user: User, settings: Settings | None) -> SettingsView:
     }
 
 
-def _changed(user: User, change: Callable[[], Settings | None]) -> SettingsView:
+_Changed = TypeVar('_Changed')
+
+
+def _store_change(change: Callable[[], _Changed]) -> _Changed:
+    """Makes a change to the settings; one the store refuses is the page's answer."""
     try:
-        return settings_view(user, change())
+        return change()
     except UnknownUser as exc:
         # Deleted since the session was found.
         raise HTTPException(status_code=401, detail=SIGN_IN_REQUIRED) from exc
     except SettingsChanged as exc:
         # Changed in another tab or browser: the page reads them again.
         raise HTTPException(status_code=412, detail=SETTINGS_CHANGED) from exc
+    except (UnknownChart, UnknownCouple) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (ChartLimit, CoupleLimit) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+def _changed(user: User, change: Callable[[], Settings | None]) -> SettingsView:
+    return settings_view(user, _store_change(change))
 
 
 @router.get('/settings')
 def read_settings(
     current: SessionDependency, accounts: AccountsDependency
 ) -> SettingsView:
-    """Your partner's chart, where you are, and your schools."""
+    """Your saved charts, your own among them, your couples, where you are, and your
+    schools."""
     user = _signed_in(current).user
     return settings_view(user, accounts.store.settings(user.id))
 
 
-@router.put('/partner')
-def save_partner(
+@router.post('/charts', status_code=201)
+def save_chart(
+    payload: BirthRequest,
+    request: Request,
+    current: SessionDependency,
+    accounts: AccountsDependency,
+) -> SavedReply:
+    """Keeps a chart in your library, after the last, and says the id it is kept
+    under. It is checked as a first chart with its time is, and charted before it is
+    kept."""
+    _same_origin(request, accounts)
+    user = _signed_in(current).user
+    _named(user, payload.key)
+    try:
+        birth = birth_of(payload)
+    except (RecordError, FirstChartInputError, TodayInputError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    settings, chart_id = _store_change(
+        lambda: accounts.store.save_chart(user.id, birth, payload.updated_at)
+    )
+    return SavedReply(**settings_view(user, settings), saved=chart_id)
+
+
+@router.put('/charts/{chart_id}')
+def change_chart(
+    chart_id: str,
     payload: BirthRequest,
     request: Request,
     current: SessionDependency,
     accounts: AccountsDependency,
 ) -> SettingsView:
-    """Keeps a birth as your partner's chart. It is checked as a first chart with its
-    time is, and charted before it is kept."""
+    """Changes a saved chart's name or birth. It keeps its id, and its place as your
+    own chart or in a couple."""
     _same_origin(request, accounts)
     user = _signed_in(current).user
     _named(user, payload.key)
@@ -922,23 +1017,98 @@ def save_partner(
     except (RecordError, FirstChartInputError, TodayInputError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _changed(
-        user, lambda: accounts.store.put_partner(user.id, birth, payload.updated_at)
+        user,
+        lambda: accounts.store.update_chart(user.id, chart_id, birth, payload.updated_at),
     )
 
 
-@router.delete('/partner')
-def delete_partner(
+@router.delete('/charts/{chart_id}')
+def delete_chart(
+    chart_id: str,
     payload: SettingsRequest,
     request: Request,
     current: SessionDependency,
     accounts: AccountsDependency,
 ) -> SettingsView:
-    """Removes your partner's chart, if you keep one."""
+    """Removes a chart from your library: it leaves its couple, and stops being your
+    own."""
     _same_origin(request, accounts)
     user = _signed_in(current).user
     _named(user, payload.key)
     return _changed(
-        user, lambda: accounts.store.delete_partner(user.id, payload.updated_at)
+        user, lambda: accounts.store.delete_chart(user.id, chart_id, payload.updated_at)
+    )
+
+
+@router.put('/my-chart')
+def mark_my_chart(
+    payload: MyChartRequest,
+    request: Request,
+    current: SessionDependency,
+    accounts: AccountsDependency,
+) -> SettingsView:
+    """Marks one of your saved charts as your own: signing in opens it."""
+    _same_origin(request, accounts)
+    user = _signed_in(current).user
+    _named(user, payload.key)
+    return _changed(
+        user,
+        lambda: accounts.store.set_my_chart(user.id, payload.chart, payload.updated_at),
+    )
+
+
+@router.delete('/my-chart')
+def unmark_my_chart(
+    payload: SettingsRequest,
+    request: Request,
+    current: SessionDependency,
+    accounts: AccountsDependency,
+) -> SettingsView:
+    """No saved chart is your own any more; the chart stays in your library."""
+    _same_origin(request, accounts)
+    user = _signed_in(current).user
+    _named(user, payload.key)
+    return _changed(
+        user, lambda: accounts.store.clear_my_chart(user.id, payload.updated_at)
+    )
+
+
+@router.post('/couples', status_code=201)
+def pair_charts(
+    payload: CoupleRequest,
+    request: Request,
+    current: SessionDependency,
+    accounts: AccountsDependency,
+) -> SettingsView:
+    """Pairs two of your saved charts as a couple. A chart is in one couple at most."""
+    _same_origin(request, accounts)
+    user = _signed_in(current).user
+    _named(user, payload.key)
+    if payload.charts[0] == payload.charts[1]:
+        raise HTTPException(status_code=400, detail='A couple is two different charts.')
+    return _changed(
+        user,
+        lambda: accounts.store.add_couple(
+            user.id, (payload.charts[0], payload.charts[1]), payload.updated_at
+        ),
+    )
+
+
+@router.delete('/couples/{couple_id}')
+def part_couple(
+    couple_id: str,
+    payload: SettingsRequest,
+    request: Request,
+    current: SessionDependency,
+    accounts: AccountsDependency,
+) -> SettingsView:
+    """Parts a couple; both charts stay in your library."""
+    _same_origin(request, accounts)
+    user = _signed_in(current).user
+    _named(user, payload.key)
+    return _changed(
+        user,
+        lambda: accounts.store.delete_couple(user.id, couple_id, payload.updated_at),
     )
 
 

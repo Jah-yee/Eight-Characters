@@ -4,15 +4,17 @@ A record is written as canonical JSON: UTF-8, keys sorted, two-space indents and
 final newline. The same record therefore always gives the same bytes, and a file that
 decodes to a record must be exactly those bytes.
 
-An account's record holds the account and its settings for Today: a partner's chart,
-where the person is, and the schools chosen.
+An account's record holds the account and its settings: the charts it keeps, which of
+them is the person's own, the couples they form, where the person is, and the schools
+chosen for Today.
 """
 
+import hashlib
 import json
 import math
 import re
 import secrets
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Any, Final, Literal, TypeGuard, cast
 
@@ -41,10 +43,14 @@ GENDERS: Final[tuple[Gender, ...]] = ('male', 'female')
 # The engine's Zi-hour conventions (conventions.ALLOWED_ZI_CONVENTIONS).
 ZI_CONVENTIONS: Final[tuple[ZiConvention, ...]] = ('split_midnight', 'whole_zi_23')
 # The version of a record's own fields that this app writes. Schema 1 records, from
-# before accounts kept settings, are read as accounts without any; a record of any
-# other version is refused.
-RECORD_SCHEMA: Final = 2
-READABLE_SCHEMAS: Final = (1, 2)
+# before accounts kept settings, are read as accounts without any. Schema 2 records,
+# from before accounts kept charts, have their partner's chart read as a saved chart
+# that pairs with the person's own once one is marked. A record of any other version is
+# refused.
+RECORD_SCHEMA: Final = 3
+READABLE_SCHEMAS: Final = (1, 2, 3)
+# The most charts an account keeps.
+CHART_LIMIT: Final = 50
 EMAIL_MAX_LENGTH: Final = 254
 NAME_MAX_LENGTH: Final = 80
 PLACE_NAME_MAX_LENGTH: Final = 200
@@ -67,8 +73,18 @@ _USER_FIELDS: Final = frozenset(
         'updated_at',
     }
 )
-_FIELDS_BY_SCHEMA: Final = {1: _USER_FIELDS, 2: _USER_FIELDS | {'settings'}}
-_SETTINGS_FIELDS: Final = frozenset({'partner', 'place', 'schools', 'updated_at'})
+_FIELDS_BY_SCHEMA: Final = {
+    1: _USER_FIELDS,
+    2: _USER_FIELDS | {'settings'},
+    3: _USER_FIELDS | {'settings'},
+}
+# Settings as schema 2 records kept them, with one partner's chart.
+_PARTNER_SETTINGS_FIELDS: Final = frozenset({'partner', 'place', 'schools', 'updated_at'})
+_SETTINGS_FIELDS: Final = frozenset(
+    {'charts', 'couples', 'my_chart', 'pending_partner', 'place', 'schools', 'updated_at'}
+)
+_CHART_FIELDS: Final = frozenset({'birth', 'id'})
+_COUPLE_FIELDS: Final = frozenset({'charts', 'id'})
 _BIRTH_FIELDS: Final = frozenset(
     {'date', 'fold', 'gender', 'name', 'place', 'time', 'zi'}
 )
@@ -316,18 +332,97 @@ NO_CHOICE: Final = ChosenSchools(favourable=None, season=None, transits=None)
 
 
 @dataclass(frozen=True)
-class Settings:
-    """What an account keeps for Today: a partner's chart, where the person is, and
-    the schools chosen. An account that has set nothing has none. Today is about the
-    chart the page is on, so the account keeps no chart of its own."""
+class SavedChart:
+    """A chart the account keeps: a birth, under the id the library knows it by."""
 
-    partner: Birth | None
+    id: str
+    birth: Birth
+
+    def __post_init__(self) -> None:
+        if not is_id(self.id):
+            raise RecordError('A chart id must be 32 lowercase hex digits.')
+
+
+@dataclass(frozen=True)
+class Couple:
+    """Two saved charts read together: Today reads each from the other's side."""
+
+    id: str
+    charts: tuple[str, str]
+
+    def __post_init__(self) -> None:
+        if not is_id(self.id):
+            raise RecordError('A couple id must be 32 lowercase hex digits.')
+        if (
+            len(self.charts) != 2
+            or not all(is_id(chart) for chart in self.charts)
+            or self.charts[0] == self.charts[1]
+        ):
+            raise RecordError('A couple is two different saved charts.')
+
+
+@dataclass(frozen=True)
+class Settings:
+    """What an account keeps: its saved charts, which of them is the person's own, the
+    couples they form, where the person is, and the schools chosen for Today. An
+    account that has set nothing has none."""
+
+    charts: tuple[SavedChart, ...]
+    # The person's own chart, one of `charts`; None until one is marked.
+    my_chart: str | None
+    couples: tuple[Couple, ...]
+    # The chart that was the account's partner before accounts kept charts: it forms a
+    # couple with the person's own chart when one is first marked.
+    pending_partner: str | None
     place: Place | None
     schools: ChosenSchools
     updated_at: str
 
     def __post_init__(self) -> None:
         _check_timestamp('updated_at', self.updated_at)
+        ids = [chart.id for chart in self.charts]
+        if len(set(ids)) != len(ids):
+            raise RecordError('Two saved charts share an id.')
+        if len(ids) > CHART_LIMIT:
+            raise RecordError(f'An account keeps at most {CHART_LIMIT} charts.')
+        if self.my_chart is not None and self.my_chart not in ids:
+            raise RecordError('My chart is not one of the saved charts.')
+        couples = [couple.id for couple in self.couples]
+        if len(set(couples)) != len(couples):
+            raise RecordError('Two couples share an id.')
+        pairs = [frozenset(couple.charts) for couple in self.couples]
+        if len(set(pairs)) != len(pairs):
+            raise RecordError('The same two charts form two couples.')
+        if any(not set(couple.charts) <= set(ids) for couple in self.couples):
+            raise RecordError('A couple names a chart the account does not keep.')
+        if self.pending_partner is not None and (
+            self.pending_partner not in ids or self.my_chart is not None
+        ):
+            raise RecordError(
+                'A partner waits for a couple only as a saved chart, and only while '
+                'no chart is marked as the person\'s own.'
+            )
+
+    def chart(self, chart_id: str) -> SavedChart | None:
+        return next((chart for chart in self.charts if chart.id == chart_id), None)
+
+    def couple_of(self, chart_id: str) -> Couple | None:
+        return next(
+            (couple for couple in self.couples if chart_id in couple.charts), None
+        )
+
+
+def no_settings(now: str) -> Settings:
+    """The settings of an account that has set nothing."""
+    return Settings(
+        charts=(),
+        my_chart=None,
+        couples=(),
+        pending_partner=None,
+        place=None,
+        schools=NO_CHOICE,
+        updated_at=now,
+    )
 
 
 def canonical_json(value: dict[str, Any]) -> bytes:
@@ -358,10 +453,18 @@ def _birth_value(birth: Birth) -> dict[str, Any]:
 
 
 def settings_value(settings: Settings) -> dict[str, Any]:
-    """The settings as their records write them, and as the API and the export show
-    them."""
+    """The settings as their records write them, and as the export shows them."""
     return {
-        'partner': None if settings.partner is None else _birth_value(settings.partner),
+        'charts': [
+            {'birth': _birth_value(chart.birth), 'id': chart.id}
+            for chart in settings.charts
+        ],
+        'couples': [
+            {'charts': list(couple.charts), 'id': couple.id}
+            for couple in settings.couples
+        ],
+        'my_chart': settings.my_chart,
+        'pending_partner': settings.pending_partner,
         'place': None if settings.place is None else place_value(settings.place),
         'schools': {
             'favourable': settings.schools.favourable,
@@ -444,10 +547,8 @@ def _birth_from(value: object, what: str) -> Birth:
     )
 
 
-def settings_from(value: object) -> Settings:
-    """The settings a record's JSON value holds, every part checked."""
-    record = _fields(value, 'The settings', _SETTINGS_FIELDS)
-    schools = _fields(record['schools'], 'The schools', _SCHOOLS_FIELDS)
+def _chosen_from(value: object) -> ChosenSchools:
+    schools = _fields(value, 'The schools', _SCHOOLS_FIELDS)
     favourable = _optional_text(schools, 'favourable', 'The schools')
     season = _optional_text(schools, 'season', 'The schools')
     transits = _optional_text(schools, 'transits', 'The schools')
@@ -457,24 +558,108 @@ def settings_from(value: object) -> Settings:
         raise RecordError(f'Unknown season school: {season!r}.')
     if transits is not None and not is_transit_school(transits):
         raise RecordError(f'Unknown transit school: {transits!r}.')
-    partner: object = record['partner']
-    place: object = record['place']
+    return ChosenSchools(favourable=favourable, season=season, transits=transits)
+
+
+def _list(record: dict[str, Any], name: str, what: str) -> list[object]:
+    value: object = record[name]
+    if not isinstance(value, list):
+        raise RecordError(f"{what}'s {name} must be a list.")
+    return cast(list[object], value)
+
+
+def _id(value: object, what: str) -> str:
+    if not isinstance(value, str) or not is_id(value):
+        raise RecordError(f'{what} must be 32 lowercase hex digits.')
+    return value
+
+
+def partner_chart_id(partner: object) -> str:
+    """The id a schema 2 partner's chart is kept under: the same for the same chart
+    every time it is read, so the library names it the same until it is written."""
+    return hashlib.sha256(b'partner\n' + canonical_json(cast(dict[str, Any], partner))).hexdigest()[:32]
+
+
+def settings_from(value: object) -> Settings:
+    """The settings a record's JSON value holds, every part checked. Settings kept
+    before accounts kept charts read their partner's chart as a saved chart, waiting to
+    pair with the person's own."""
+    if isinstance(value, dict) and frozenset(cast(dict[str, Any], value)) == _PARTNER_SETTINGS_FIELDS:
+        record = cast(dict[str, Any], value)
+        partner: object = record['partner']
+        held: object = record['place']
+        charts: tuple[SavedChart, ...] = ()
+        if partner is not None:
+            charts = (
+                SavedChart(
+                    id=partner_chart_id(partner),
+                    birth=_birth_from(partner, "A partner's chart"),
+                ),
+            )
+        return Settings(
+            charts=charts,
+            my_chart=None,
+            couples=(),
+            pending_partner=charts[0].id if charts else None,
+            place=None if held is None else _place_from(held, 'Where you are'),
+            schools=_chosen_from(record['schools']),
+            updated_at=_text(record, 'updated_at', 'The settings'),
+        )
+    record = _fields(value, 'The settings', _SETTINGS_FIELDS)
+    charts = tuple(
+        SavedChart(
+            id=_id(item['id'], 'A chart id'),
+            birth=_birth_from(item['birth'], 'A saved chart'),
+        )
+        for item in (
+            _fields(entry, 'A saved chart', _CHART_FIELDS)
+            for entry in _list(record, 'charts', 'The settings')
+        )
+    )
+    couples: list[Couple] = []
+    for entry in _list(record, 'couples', 'The settings'):
+        item = _fields(entry, 'A couple', _COUPLE_FIELDS)
+        members = _list(item, 'charts', 'A couple')
+        if len(members) != 2:
+            raise RecordError('A couple is two saved charts.')
+        couples.append(
+            Couple(
+                id=_id(item['id'], 'A couple id'),
+                charts=(_id(members[0], 'A couple chart'), _id(members[1], 'A couple chart')),
+            )
+        )
+    mine: object = record['my_chart']
+    pending: object = record['pending_partner']
+    held = record['place']
     return Settings(
-        partner=None if partner is None else _birth_from(partner, "A partner's chart"),
-        place=None if place is None else _place_from(place, 'Where you are'),
-        schools=ChosenSchools(favourable=favourable, season=season, transits=transits),
+        charts=charts,
+        my_chart=None if mine is None else _id(mine, 'My chart'),
+        couples=tuple(couples),
+        pending_partner=None if pending is None else _id(pending, 'The pending partner'),
+        place=None if held is None else _place_from(held, 'Where you are'),
+        schools=_chosen_from(record['schools']),
         updated_at=_text(record, 'updated_at', 'The settings'),
     )
 
 
+def _kept_with_a_partner(value: object) -> bool:
+    return isinstance(value, dict) and frozenset(cast(dict[str, Any], value)) == _PARTNER_SETTINGS_FIELDS
+
+
 def decode_settings(data: bytes) -> Settings:
-    """Settings as the database keeps them, refusing anything but canonical bytes."""
+    """Settings as the database keeps them, refusing anything but canonical bytes:
+    those this app writes, or those it wrote before accounts kept charts."""
     try:
         value: object = json.loads(data.decode('utf-8'))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise RecordError('The settings are not UTF-8 JSON.') from exc
     settings = settings_from(value)
-    if encode_settings(settings) != data:
+    written = (
+        canonical_json(cast(dict[str, Any], value))
+        if _kept_with_a_partner(value)
+        else encode_settings(settings)
+    )
+    if written != data:
         raise RecordError('The settings are not in canonical form.')
     return settings
 
@@ -542,8 +727,17 @@ def decode_user(data: bytes) -> tuple[User, Settings | None]:
         updated_at=texts['updated_at'],
     )
     held: object = record.get('settings')
+    if held is not None and _kept_with_a_partner(held) != (schema == 2):
+        raise RecordError(f'A schema {schema} record holds settings of another schema.')
     settings = None if held is None else settings_from(held)
-    if canonical_json(_user_value(user, schema, settings)) != data:
+    # A schema 2 record is checked as the bytes it was written as; its settings are
+    # read into today's form.
+    written = (
+        canonical_json(record)
+        if schema == 2
+        else canonical_json(_user_value(user, schema, settings))
+    )
+    if written != data:
         raise RecordError('A user record is not in canonical form.')
     return user, settings
 
