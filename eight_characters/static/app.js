@@ -2530,7 +2530,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Today's keys, while its page has focus and no field does, and its commands.
   document.addEventListener('keydown', (event) => {
     if (event.defaultPrevented || !today.isShown() || keysDialog.open || paletteDialog.open || account.isOpen()
-      || partnerDialog.open) return;
+      || libraryDialog.open || saveChartDialog.open) return;
     if (event.key.toLowerCase() === 'k' && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey) {
       event.preventDefault();
       palette.open(today.commands().map((command) => ({ group: requiredTranslation('page_today'), ...command })));
