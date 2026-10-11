@@ -87,6 +87,23 @@
     // change meanwhile), until the next answer is drawn.
     let daysRun = null;
     let daysReading = null;
+    // The press on the days being followed, if any (the gestures are below).
+    let drag = null;
+    const dropDrag = () => {
+      drag = null;
+      days.classList.remove('is-dragging');
+      days.style.removeProperty('--drag');
+    };
+    // The run a press drags by is discarded (another reading shown, the day refused,
+    // Today left): the press is still followed to its release, for its click, but moves
+    // nothing, though another run is drawn before it ends.
+    const cancelDrag = () => {
+      if (drag === null) return;
+      drag.drags = false;
+      drag.moving = false;
+      days.classList.remove('is-dragging');
+      days.style.removeProperty('--drag');
+    };
     // The clock as the page last drew it: today where you are, and the hour of the day
     // shown that it is in.
     let clockDrawn = null;
@@ -740,6 +757,7 @@
       body.classList.add('hidden');
       // No run is drawn: steps are calendar days again.
       daysRun = null;
+      cancelDrag();
       clearDays();
       panel.classList.add('hidden');
       view.classList.remove('has-panel');
@@ -756,7 +774,10 @@
       answer = null;
       // The run drawn stands for its own reading alone: for another chart, language or
       // person, the days wait for its own answer, and steps until then are calendar days.
-      if (daysRun !== null && daysReading !== reading(next)) daysRun = null;
+      if (daysRun !== null && daysReading !== reading(next)) {
+        daysRun = null;
+        cancelDrag();
+      }
       // The days move at once, from the run drawn; the rest waits, dimmed, for the day's
       // own answer.
       if (before !== null && before !== next.day && layDays(next.day, next.day > before ? 1 : -1)) markRun(next.day);
@@ -847,6 +868,7 @@
       answer = null;
       // The settings may change meanwhile: the run drawn with them no longer leads steps.
       daysRun = null;
+      cancelDrag();
       view.classList.add('hidden');
       view.removeAttribute('aria-busy');
     };
@@ -865,6 +887,7 @@
       for (const part of [pullLine, topics, run, scale, pillarsNote, pillars, couple, inChart, hours]) part.replaceChildren();
       couple.classList.add('hidden');
       daysRun = null;
+      cancelDrag();
       clearDays();
       panel.classList.add('hidden');
       view.classList.remove('has-panel');
@@ -909,16 +932,10 @@
     // pointer is the only one of its kind down: another of its kind still kept was let go
     // where its release was not seen.
     const down = new Map();
-    let drag = null;
     // Whether a click on the days opens nothing: from the release of a press that went
     // more than 10px, or from a second pointer pressed, until the next press starts alone.
     // A press's click comes after its release, in the same task or (a touch's tap) later.
     let swallowing = false;
-    const dropDrag = () => {
-      drag = null;
-      days.classList.remove('is-dragging');
-      days.style.removeProperty('--drag');
-    };
     daysTrack.addEventListener('pointerdown', (event) => {
       if (event.isPrimary) {
         for (const [id, kind] of down) if (kind === event.pointerType) down.delete(id);
@@ -966,9 +983,7 @@
       const dx = event.clientX - drag.x;
       dropDrag();
       if (!still) swallowing = true;
-      // The run went while it was dragged (another reading shown, or the day refused):
-      // the drag moves nothing.
-      if (!moving || Math.abs(dx) < DRAG || state === null || daysRun === null) return;
+      if (!moving || Math.abs(dx) < DRAG || state === null) return;
       const by = Math.max(1, Math.round(Math.abs(dx) / width)) * (dx < 0 ? 1 : -1);
       const day = stepped(by);
       if (day !== state.day) move({ day });

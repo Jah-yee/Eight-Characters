@@ -105,7 +105,8 @@ it started, even after going further, it moves nothing.
 Up and down stays the page's scrolling. A press that went more than 10px, up and down
 included, is no press: the click that ends it opens nothing. A cancel, a lost capture,
 or the run going while it is dragged (another reading shown, or the day refused), moves
-nothing. Another pointer pressed with it, of any kind (a touch during a mouse's
+nothing, even when the next reading is drawn before it is let go. Another pointer
+pressed with it, of any kind (a touch during a mouse's
 drag too), spoils the press: nothing moves, and no click opens a day until a press
 starts alone. A mouse let go off the days before its drag began leaves the next drag as
 it would be. A step slides the days in

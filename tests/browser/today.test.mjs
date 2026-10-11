@@ -776,6 +776,35 @@ for (const profile of profiles) {
       assert.equal(await part(page, 'day'), run[at + 3].date);
     });
 
+    check('a drag whose run is discarded while it is under way moves nothing, even once the next reading is drawn', async (page) => {
+      await page.clock.setFixedTime(NOW);
+      const { answers } = await recordToday(page);
+      await page.goto(new URL('/', process.env.EC_BASE_URL).href);
+      await setSettings(page);
+      await page.goto(new URL(todayLink(), process.env.EC_BASE_URL).href);
+      await shown(page);
+      const box = await page.locator('.today-day.is-centre .today-cards').boundingBox();
+      const x = box.x + box.width / 2;
+      const y = box.y + box.height / 2;
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      for (const step of [20, 60, 120]) await page.mouse.move(x - step, y + 3);
+      assert.equal(await page.locator('#today-days').getAttribute('class'), 'today-days is-dragging');
+      // Finnish chosen by its button while the mouse is still down, and drawn.
+      const asked = answers.length;
+      await page.evaluate(() => document.querySelector('#today-language [data-today-lang="fi"]').click());
+      await page.waitForFunction(() => new URLSearchParams(location.hash.split('?')[1]).get('lang') === 'fi');
+      await page.waitForFunction(() => !document.getElementById('today-view').hasAttribute('aria-busy'));
+      assert.equal(answers.length, asked + 1);
+      assert.equal(await page.locator('#today-days').getAttribute('class'), 'today-days');
+      // Let go a day's width further: the drag's run was English, so it moves nothing.
+      await page.mouse.move(x - 1.4 * box.width, y + 3);
+      await page.mouse.up();
+      await page.waitForTimeout(100);
+      assert.equal(await part(page, 'day'), DAY);
+      assert.equal(answers.length, asked + 1, 'the drag asked for nothing');
+    });
+
     check('a drag while the day shown is past the run drawn steps by the days it went, in calendar days', async (page) => {
       await page.clock.setFixedTime(NOW);
       const { answers } = await recordToday(page);
