@@ -86,6 +86,40 @@ GRAVES: Final = '辰戌丑未'
 # combination's element.
 COMBINATIONS: Final[tuple[str, ...]] = ('申子辰', '亥卯未', '寅午戌', '巳酉丑')
 
+Gods = tuple[TenGodName, ...]
+FRIEND: Final[Gods] = ('friend',)
+ROB: Final[Gods] = ('rob_wealth',)
+COMPANIONS: Final[Gods] = ('friend', 'rob_wealth')
+EATING: Final[Gods] = ('eating_god',)
+HURTING: Final[Gods] = ('hurting_officer',)
+OUTPUT: Final[Gods] = ('eating_god', 'hurting_officer')
+WEALTH: Final[Gods] = ('indirect_wealth', 'direct_wealth')
+KILLINGS: Final[Gods] = ('seven_killings',)
+OFFICER: Final[Gods] = ('direct_officer',)
+OFFICERS: Final[Gods] = ('seven_killings', 'direct_officer')
+OWL: Final[Gods] = ('indirect_resource',)
+RESOURCE: Final[Gods] = ('indirect_resource', 'direct_resource')
+# The Day Master's support, as Support and restrain counts it.
+SUPPORT: Final[Gods] = COMPANIONS + RESOURCE
+
+# The five stem combinations (五合), each with the element it turns into.
+COMBINING: Final[dict[frozenset[str], ElementName]] = {
+    frozenset('甲己'): 'earth',
+    frozenset('乙庚'): 'metal',
+    frozenset('丙辛'): 'water',
+    frozenset('丁壬'): 'wood',
+    frozenset('戊癸'): 'fire',
+}
+# The directional combinations (三会), each with its element.
+DIRECTIONS: Final[dict[str, ElementName]] = {
+    '寅卯辰': 'wood',
+    '巳午未': 'fire',
+    '申酉戌': 'metal',
+    '亥子丑': 'water',
+}
+
+
+
 NamedBy = Literal[
     # The month is the Day Master's prosperity or, for a yang Day Master, its blade.
     'prosperity',
@@ -140,59 +174,127 @@ def full_combination(branch: str, branches: Sequence[str]) -> str | None:
     )
 
 
-def name_structure(pillars: Mapping[str, tuple[str, str]]) -> Naming:
-    """The chart's structure, after Zi Ping Zhen Quan.
+def _bound(shown: Sequence[str]) -> set[int]:
+    """Indexes of shown stems combined (五合) with the stem beside them, year–month or
+    month–hour: such a stem is taken away (戊癸作合，财印两失; 壬财丁印，二者相合)."""
+    bound: set[int] = set()
+    for index in range(len(shown) - 1):
+        if frozenset((shown[index], shown[index + 1])) in COMBINING:
+            bound |= {index, index + 1}
+    return bound
 
-    1. The Day Master's prosperity as the month is Jian Lu Yue Jie, and a yang Day
-       Master's blade is Yang Blade (论建禄月劫: 建禄者，月建逢禄堂也；论阳刃).
+
+def _keeper(shown: Sequence[str], main: str, new: str) -> str | None:
+    """A shown stem that generates the main qi's element and controls the new god's,
+    which keeps the month's own god (变之而不失本格)."""
+    return next(
+        (
+            seen
+            for seen in shown
+            if generates(element_of(seen)) == element_of(main)
+            and controls(element_of(seen)) == element_of(new)
+        ),
+        None,
+    )
+
+
+def name_structure(pillars: Mapping[str, tuple[str, str]]) -> Naming:
+    """The chart's structure, after Zi Ping Zhen Quan (docs/Today.md, Structure).
+
+    1. The month at the Day Master's prosperity is Jian Lu Yue Jie (论建禄月劫: 建禄者，
+       月建逢禄堂也……建禄与月劫，可同一格), and a yang Day Master's blade, the branch
+       after it, is Yang Blade (论阳刃: 禄前一位，惟五阳有之). A full three-way
+       combination with the month whose element shows in a stem turns either into
+       that element's god, unless it is the Day Master's own (若戊生午月，干透丙火，
+       支会火局，则化刃为印).
     2. A mixed month (辰戌丑未) is named by what shows of it: 透干会取其清者用之. A
-       hidden stem shows when a stem of its element does (甲透未库), and the showing
-       stem's god names the structure (辰中暗煞，壬以透之). Of several, the first in
-       the month's order, except that Seven Killings comes before the Eating God that
-       controls it (论相神: 煞逢食制，则煞为用，食为相). With nothing showing, a full
-       three-way combination the month joins names it, else its main qi.
-    3. Another month is named by its main qi when it shows. Else its middle qi, when
-       that shows and is not the Day Master's own element (用神变化: 不透甲而透丙……
-       同知得以作主), unless a showing stem generates the main qi's element and
-       controls the middle qi's, which keeps the main qi (乙生申月，透壬化印，而又透戊，
-       则财能生官，印逢财而退位). Else a full three-way combination, unless it is
-       the Day Master's own element (丙生寅月，午戌会劫……则仍为印), else the main qi.
+       hidden stem shows when a stem of its element does (甲透未库), and the shown
+       stem's own god names the structure (辰中暗煞，壬以透之); two shown stems that
+       combine side by side are taken away (戊癸作合，财印两失). Of what is left, an
+       Officer or Killings shown by the month's own stem comes first (甲生丑月，辛透为官
+       ……而又透己财以生官), else the first in the month's hidden-stem order; an Eating
+       God so chosen gives way to Killings that show (煞逢食制，则煞为用，食为相). With
+       nothing showing, a full three-way combination the month joins names it, else
+       its main qi. A god of the Day Master's own element names Jian Lu Yue Jie (透乙
+       则用月劫).
+    3. Another month is named by its main qi when it shows (辛生寅月……而又透甲，格成
+       正财). Else by its middle qi, when that shows and is not the Day Master's own
+       element (不透甲而透丙……同知得以作主; 禄堂透出……非也), unless a shown stem
+       generates the main qi's element and controls the middle qi's (乙生申月，透壬化印，
+       而又透戊，则财能生官，印逢财而退位). Else by a full three-way combination (丁生亥
+       月，本为正官，支全卯未，则化为印); one into the Day Master's own element names
+       Jian Lu Yue Jie, unless a shown stem keeps the main qi as above (丙生寅月，午戌
+       会劫，而又或透甲，或透壬，则仍为印). Else by the main qi.
     """
     day_master = pillars['day'][0]
     month = pillars['month'][1]
     shown = _shown(pillars)
     branches = _branches(pillars)
-    if PROSPERITY[day_master] == month:
+    hidden = hidden_stems_lookup()[month]
+    main = hidden[0]
+    own_month: NamedBy | None = (
+        'prosperity'
+        if PROSPERITY[day_master] == month
+        else 'blade'
+        if BLADE.get(day_master) == month
+        else None
+    )
+    if own_month is not None:
+        combination = full_combination(month, branches)
+        if combination is not None:
+            stem = hidden_stems_lookup()[combination[1]][0]
+            god = ten_god(day_master, stem)
+            if god not in _OWN and any(element_of(seen) == element_of(stem) for seen in shown):
+                return {
+                    'structure': STRUCTURE_OF_GOD[god],
+                    'by': 'combination',
+                    'stem': stem,
+                    'because': combination,
+                }
         return {
-            'structure': 'jian_lu_yue_jie',
-            'by': 'prosperity',
+            'structure': 'jian_lu_yue_jie' if own_month == 'prosperity' else 'yang_blade',
+            'by': own_month,
             'stem': None,
             'because': None,
         }
-    if BLADE.get(day_master) == month:
-        return {'structure': 'yang_blade', 'by': 'blade', 'stem': None, 'because': None}
-    hidden = hidden_stems_lookup()[month]
-    main = hidden[0]
     if month in GRAVES:
-        showing: list[str] = []
+        bound = _bound(shown)
+        free = [seen for index, seen in enumerate(shown) if index not in bound]
+        # Each hidden stem, in order, with the free stems that show it.
+        candidates: list[tuple[str, str]] = []
         for stem in hidden:
-            showing += [
-                seen
-                for seen in shown
-                if element_of(seen) == element_of(stem) and seen not in showing
+            candidates += [
+                (seen, stem)
+                for seen in free
+                if element_of(seen) == element_of(stem)
+                and seen not in [chosen for chosen, _ in candidates]
             ]
-        if showing:
-            gods = [ten_god(day_master, seen) for seen in showing]
-            first = showing[0]
-            if 'seven_killings' in gods and 'eating_god' in gods:
-                first = showing[gods.index('seven_killings')]
+        if candidates:
+            exact_officer = next(
+                (
+                    seen
+                    for seen, stem in candidates
+                    if seen == stem and ten_god(day_master, seen) in OFFICERS
+                ),
+                None,
+            )
+            first = exact_officer if exact_officer is not None else candidates[0][0]
+            if ten_god(day_master, first) == 'eating_god':
+                first = next(
+                    (
+                        seen
+                        for seen, _ in candidates
+                        if ten_god(day_master, seen) == 'seven_killings'
+                    ),
+                    first,
+                )
             return {
                 'structure': STRUCTURE_OF_GOD[ten_god(day_master, first)],
                 'by': 'mixed_shows',
                 'stem': first,
                 'because': None,
             }
-        return _by_combination(day_master, month, branches, main, keep_own=False)
+        return _by_combination(day_master, month, branches, main, shown=None)
     if main in shown:
         return {
             'structure': STRUCTURE_OF_GOD[ten_god(day_master, main)],
@@ -200,21 +302,9 @@ def name_structure(pillars: Mapping[str, tuple[str, str]]) -> Naming:
             'stem': main,
             'because': None,
         }
-    if (
-        len(hidden) > 1
-        and hidden[1] in shown
-        and ten_god(day_master, hidden[1]) not in _OWN
-    ):
+    if len(hidden) > 1 and hidden[1] in shown and ten_god(day_master, hidden[1]) not in _OWN:
         middle = hidden[1]
-        keeper = next(
-            (
-                seen
-                for seen in shown
-                if generates(element_of(seen)) == element_of(main)
-                and controls(element_of(seen)) == element_of(middle)
-            ),
-            None,
-        )
+        keeper = _keeper(shown, main, middle)
         if keeper is not None:
             return {
                 'structure': STRUCTURE_OF_GOD[ten_god(day_master, main)],
@@ -228,30 +318,44 @@ def name_structure(pillars: Mapping[str, tuple[str, str]]) -> Naming:
             'stem': middle,
             'because': None,
         }
-    return _by_combination(day_master, month, branches, main, keep_own=True)
+    return _by_combination(day_master, month, branches, main, shown=shown)
 
 
 def _by_combination(
-    day_master: str, month: str, branches: Sequence[str], main: str, *, keep_own: bool
+    day_master: str,
+    month: str,
+    branches: Sequence[str],
+    main: str,
+    *,
+    shown: Sequence[str] | None,
 ) -> Naming:
+    """A full three-way combination with the month names it; else the main qi. Outside
+    the mixed months (`shown` given), one into the Day Master's own element gives way
+    to a shown stem that keeps the main qi."""
     combination = full_combination(month, branches)
     if combination is not None:
         stem = hidden_stems_lookup()[combination[1]][0]
         god = ten_god(day_master, stem)
-        if not (keep_own and god in _OWN):
+        keeper = _keeper(shown, main, stem) if shown is not None and god in _OWN else None
+        if keeper is not None:
             return {
-                'structure': STRUCTURE_OF_GOD[god],
-                'by': 'combination',
-                'stem': stem,
-                'because': combination,
+                'structure': STRUCTURE_OF_GOD[ten_god(day_master, main)],
+                'by': 'main_qi_kept',
+                'stem': main,
+                'because': keeper,
             }
+        return {
+            'structure': STRUCTURE_OF_GOD[god],
+            'by': 'combination',
+            'stem': stem,
+            'because': combination,
+        }
     return {
         'structure': STRUCTURE_OF_GOD[ten_god(day_master, main)],
         'by': 'main_qi',
         'stem': main,
         'because': None,
     }
-
 
 # ── What a structure favours: its chapter on choosing luck (取运) ──
 
@@ -266,39 +370,6 @@ VERDICTS: Final[tuple[Verdict, ...]] = (
     'against',
     'strongly_against',
 )
-
-Gods = tuple[TenGodName, ...]
-FRIEND: Final[Gods] = ('friend',)
-ROB: Final[Gods] = ('rob_wealth',)
-COMPANIONS: Final[Gods] = ('friend', 'rob_wealth')
-EATING: Final[Gods] = ('eating_god',)
-HURTING: Final[Gods] = ('hurting_officer',)
-OUTPUT: Final[Gods] = ('eating_god', 'hurting_officer')
-WEALTH: Final[Gods] = ('indirect_wealth', 'direct_wealth')
-KILLINGS: Final[Gods] = ('seven_killings',)
-OFFICER: Final[Gods] = ('direct_officer',)
-OFFICERS: Final[Gods] = ('seven_killings', 'direct_officer')
-OWL: Final[Gods] = ('indirect_resource',)
-RESOURCE: Final[Gods] = ('indirect_resource', 'direct_resource')
-# The Day Master's support, as Support and restrain counts it.
-SUPPORT: Final[Gods] = COMPANIONS + RESOURCE
-
-# The five stem combinations (五合), each with the element it turns into.
-COMBINING: Final[dict[frozenset[str], ElementName]] = {
-    frozenset('甲己'): 'earth',
-    frozenset('乙庚'): 'metal',
-    frozenset('丙辛'): 'water',
-    frozenset('丁壬'): 'wood',
-    frozenset('戊癸'): 'fire',
-}
-# The directional combinations (三会), each with its element.
-DIRECTIONS: Final[dict[str, ElementName]] = {
-    '寅卯辰': 'wood',
-    '巳午未': 'fire',
-    '申酉戌': 'metal',
-    '亥子丑': 'water',
-}
-
 
 def element_of_god(day_master: str, god: TenGodName) -> ElementName:
     own = element_of(day_master)
@@ -358,6 +429,13 @@ class Facts:
             if index_a != index_b and god_a in these and god_b in those
         )
 
+    def present(self, gods: Gods) -> bool:
+        """Shown in a stem, or the main qi of a branch."""
+        return self.show(gods) or any(
+            ten_god(self.day_master, hidden_stems_lookup()[branch][0]) in gods
+            for branch in self.branches
+        )
+
     def rooted(self, gods: Gods) -> bool:
         """These gods' element is a branch's main qi (根)."""
         elements = {element_of_god(self.day_master, god) for god in gods}
@@ -392,30 +470,33 @@ def chart_facts(
     )
 
 
-# ── Charts this school does not read: outer structures (外格) ──
+# ── Charts this school does not read ──
 
-OuterReason = Literal['month_without_use', 'following', 'transformation']
+# Why this school does not read a chart.
+Unreadable = Literal['month_without_use', 'broken', 'following', 'transformation']
 
 
-def outer_structure(
+def unreadable(
     pillars: Mapping[str, tuple[str, str]], naming: Naming, facts: Facts
-) -> OuterReason | None:
-    """Why the chart is an outer structure, which this school does not read, or None.
+) -> Unreadable | None:
+    """Why the school does not read the chart, or None when it does.
 
-    论外格用舍: 外格者，盖因月令无用，权而用之 (outer structures are for a month with
-    no useful god).
-    - A Jian Lu Yue Jie or Yang Blade month with no Wealth, Officer, Killings or Output
-      showing in a stem or joined in the branches has none: 必看四柱有无财官煞食透干会支，
-      另取用神.
-    - A chart with no Companion or Resource anywhere but the Day Master's own stem
-      follows its strongest force (论杂格: 弃命从财, 弃命从煞), as Support and restrain
-      finds it.
-    - A Day Master combined with the month or hour stem (从化) into an element whose
-      three-way or directional combination the month belongs to, with all three of
-      those branches in the chart: 要化出之物，得时乘令，四支局全.
+    - **A month without a use** (论外格用舍: 外格者，盖因月令无用，权而用之): a Jian Lu Yue
+      Jie or Yang Blade month with no Wealth, Officer, Killings or Output shown in a
+      stem or joined in a full three-way combination (必看四柱有无财官煞食透干会支，另取
+      用神). Those are the outer structures (外格), which the school does not judge.
+    - **Broken** (论用神成败救应): 建禄月劫，无财官，透煞印，建禄月劫之格败也 (a Jian Lu
+      month with Killings or Resource shown and no Wealth, Direct Officer or Output to
+      use), and 阳刃无官煞，刃格败也 (a Yang Blade with no Officer or Killings shown).
+    - **Following**: no Companion or Resource anywhere but the Day Master's own stem, as
+      Support and restrain finds it (论杂格: 弃命从财, 弃命从煞).
+    - **Transformation** (从化): the Day Master combined with the month or hour stem
+      into an element whose three-way or directional combination the month belongs to,
+      with all three branches in the chart: 要化出之物，得时乘令，四支局全.
     """
     day_master = pillars['day'][0]
-    if naming['structure'] in ('jian_lu_yue_jie', 'yang_blade'):
+    structure = naming['structure']
+    if structure in ('jian_lu_yue_jie', 'yang_blade'):
         uses = {element_of_god(day_master, god) for god in OUTPUT + WEALTH + OFFICERS}
         joined = any(
             all(branch in facts.branches for branch in combination)
@@ -423,7 +504,16 @@ def outer_structure(
             for combination in COMBINATIONS
         )
         if not facts.show(OUTPUT + WEALTH + OFFICERS) and not joined:
-            return 'month_without_use'
+            return 'broken' if facts.show(RESOURCE) else 'month_without_use'
+        # A god held as a branch's main qi counts too: 官煞藏而不露 (论阳刃).
+        if (
+            structure == 'jian_lu_yue_jie'
+            and not joined
+            and not facts.present(WEALTH + OFFICER + OUTPUT)
+        ):
+            return 'broken'
+        if structure == 'yang_blade' and not facts.present(OFFICERS):
+            return 'broken'
     if not _supported_beyond_day_master(pillars):
         return 'following'
     month = pillars['month'][1]
@@ -799,8 +889,8 @@ _SEVEN_KILLINGS: Final[tuple[LuckCase, ...]] = (
         lambda f: (
             ([rule(COMPANIONS, 'favourable', '喜')] if f.weak else [])
             + (
-                [rule(EATING, 'favourable', '喜')]
-                if f.heavier(KILLINGS, EATING)
+                [rule(OUTPUT, 'favourable', '喜')]
+                if f.heavier(KILLINGS, OUTPUT)
                 else []
             )
         ),
@@ -808,7 +898,7 @@ _SEVEN_KILLINGS: Final[tuple[LuckCase, ...]] = (
     LuckCase(
         'wealth_clears_resource',
         '七煞用财，其以财而去印存食者，不利劫财，伤食皆吉，喜财怕印，透煞亦顺。',
-        lambda f: f.show(WEALTH) and f.show(RESOURCE) and f.show(EATING),
+        lambda f: f.show(WEALTH) and f.show(RESOURCE) and f.show(OUTPUT),
         lambda f: [
             rule(ROB, 'against', '不利'),
             rule(OUTPUT, 'favourable', '皆吉'),
@@ -818,16 +908,16 @@ _SEVEN_KILLINGS: Final[tuple[LuckCase, ...]] = (
         ],
     ),
     LuckCase(
-        'eating_god',
+        'output',
         '煞用食制，煞重食轻则助食，煞轻食重则助煞，煞食均而日主根轻则助身。'
         '忌正官之混杂，畏印绶之夺食。',
-        lambda f: f.show(EATING),
+        lambda f: f.show(OUTPUT),
         lambda f: (
             (
-                [rule(EATING, 'favourable', '助食')]
-                if f.heavier(KILLINGS, EATING)
+                [rule(OUTPUT, 'favourable', '助食')]
+                if f.heavier(KILLINGS, OUTPUT)
                 else [rule(KILLINGS, 'favourable', '助煞')]
-                if f.heavier(EATING, KILLINGS)
+                if f.heavier(OUTPUT, KILLINGS)
                 else [rule(COMPANIONS, 'favourable', '助身')]
                 if f.weak
                 else []
@@ -850,7 +940,7 @@ _SEVEN_KILLINGS: Final[tuple[LuckCase, ...]] = (
         '其以财而助煞不及者，财已足，则喜食印与帮身；财未足，则喜财旺而露煞。',
         lambda f: f.show(WEALTH) and f.heavier(SUPPORT, KILLINGS),
         lambda f: (
-            [rule(EATING + RESOURCE + COMPANIONS, 'favourable', '喜')]
+            [rule(OUTPUT + RESOURCE + COMPANIONS, 'favourable', '喜')]
             if f.heavier(WEALTH, KILLINGS)
             else [rule(WEALTH + KILLINGS, 'favourable', '喜')]
         ),
@@ -859,7 +949,7 @@ _SEVEN_KILLINGS: Final[tuple[LuckCase, ...]] = (
         'rob_wealth_against_killings',
         '煞无食制而用刃当煞，煞轻刃重则喜助煞，刃轻煞重，则宜制伏，无食可夺，印运何伤？'
         '七煞既纯，杂官不利。',
-        lambda f: not f.show(EATING) and f.show(ROB),
+        lambda f: not f.show(OUTPUT) and f.show(ROB),
         lambda f: [
             rule(KILLINGS, 'favourable', '喜助煞')
             if f.heavier(COMPANIONS, KILLINGS)
@@ -943,7 +1033,7 @@ _HURTING_OFFICER: Final[tuple[LuckCase, ...]] = (
     ),
     LuckCase(
         'officer_metal',
-        '伤官用官，运喜财印，不利食伤',
+        '伤官用官，运喜财印，不利食伤，若局中官露而财印两旺，则比劫伤官，未始非吉矣。',
         lambda f: f.show(OFFICER) and element_of(f.day_master) == 'metal',
         lambda f: [
             rule(WEALTH + RESOURCE, 'favourable', '喜'),
@@ -988,7 +1078,7 @@ _YANG_BLADE: Final[tuple[LuckCase, ...]] = (
                 if f.rooted(OFFICER)
                 else []
             )
-            + [rule(OUTPUT, 'against', '不喜')]
+            + [rule(EATING, 'against', '不喜伤食合官')]
         ),
     ),
 )
@@ -1029,21 +1119,21 @@ _JIAN_LU_YUE_JIE: Final[tuple[LuckCase, ...]] = (
         ),
         lambda f: (
             [rule(KILLINGS, 'favourable', '助煞')]
-            if f.heavier(EATING, KILLINGS)
-            else [rule(EATING, 'favourable', '助食')]
-            if f.heavier(KILLINGS, EATING)
+            if f.heavier(OUTPUT, KILLINGS)
+            else [rule(OUTPUT, 'favourable', '助食')]
+            if f.heavier(KILLINGS, OUTPUT)
             else []
         ),
     ),
     LuckCase(
-        'killings_and_eating_god',
+        'killings_and_output',
         '禄劫用煞食制，食重煞轻，则运宜助煞；食轻煞重，则运喜助食。',
-        lambda f: f.show(KILLINGS) and f.show(EATING),
+        lambda f: f.show(KILLINGS) and f.show(OUTPUT),
         lambda f: (
             [rule(KILLINGS, 'favourable', '宜')]
-            if f.heavier(EATING, KILLINGS)
-            else [rule(EATING, 'favourable', '喜')]
-            if f.heavier(KILLINGS, EATING)
+            if f.heavier(OUTPUT, KILLINGS)
+            else [rule(OUTPUT, 'favourable', '喜')]
+            if f.heavier(KILLINGS, OUTPUT)
             else []
         ),
     ),
@@ -1211,7 +1301,7 @@ OFFICER_SHOWN: Final[tuple[str, list[Rule]]] = (
 class Reading(TypedDict):
     naming: Naming
     # Why the school does not read the chart, or None when it does.
-    outer: OuterReason | None
+    outer: Unreadable | None
     chapter: str | None
     case: str | None
     text: str | None
@@ -1227,7 +1317,7 @@ def read_structure(
     """The chart's structure and what its chapter on choosing luck favours."""
     naming = name_structure(pillars)
     facts = chart_facts(pillars, birth_standings)
-    outer = outer_structure(pillars, naming, facts)
+    outer = unreadable(pillars, naming, facts)
     if outer is not None:
         return {
             'naming': naming,

@@ -4,14 +4,21 @@ held to the text's own example charts."""
 import unittest
 from typing import Final
 
+from eight_characters.schools import SEASON_OF_MONTH, standings
 from eight_characters.structure import (
     BLADE,
+    LUCK_CASES,
     PROSPERITY,
+    Facts,
     StructureName,
+    Verdict,
     full_combination,
+    luck_reading,
     name_structure,
+    read_structure,
     ten_god,
 )
+from eight_characters.ten_gods import TEN_GOD_NAMES, TenGodName
 
 # Every example chart in the text's structure chapters, with the structure the text
 # reads it as: the chapter it stands in, or the change the text names (化官为印, 化伤为财).
@@ -173,10 +180,34 @@ class TestNamingRules(unittest.TestCase):
             (named['structure'], named['by'], named['because']),
             ('resource', 'combination', '亥卯未'),
         )
-        # 丙生寅月，午戌会劫……则仍为印: a combination into the Day Master's own element
-        # keeps the month's god.
+        # 丙生寅月，午戌会劫，而又或透甲，或透壬，则仍为印: with Ren shown, the
+        # combination into the Day Master's own element gives way to the Resource.
+        named = name_structure(pillars('壬午 庚寅 丙戌 己丑'))
+        self.assertEqual(
+            (named['structure'], named['by'], named['because']),
+            ('resource', 'main_qi_kept', '壬'),
+        )
+        # Without Jia or Ren the Resource becomes the Rob Wealth (化印为劫).
         named = name_structure(pillars('庚午 庚寅 丙戌 己丑'))
-        self.assertEqual((named['structure'], named['by']), ('resource', 'main_qi'))
+        self.assertEqual((named['structure'], named['by']), ('jian_lu_yue_jie', 'combination'))
+        # 若戊生午月，干透丙火，支会火局，则化刃为印.
+        named = name_structure(pillars('甲寅 丙午 戊戌 癸亥'))
+        self.assertEqual((named['structure'], named['by']), ('resource', 'combination'))
+
+    def test_a_mixed_months_order(self) -> None:
+        # 论杂气如何取用's own examples: the Officer its month shows comes first.
+        for text, chart in (
+            ('甲生丑月，辛透为官……而又透己财以生官', '辛酉 己丑 甲子 甲子'),
+            ('丙生辰月，透癸为官，而又逢乙以为印……以清官', '癸丑 丙辰 丙子 乙未'),
+            # 论正官: 壬戌、丁未、戊?、乙卯，杂气正官……壬财丁印，二者相合 (the day
+            # branch is garbled in every copy and does not bear on the naming).
+            ('杂气正官: 壬 and 丁 combine and are taken away', '壬戌 丁未 戊申 乙卯'),
+        ):
+            with self.subTest(text=text):
+                self.assertEqual(name_structure(pillars(chart))['structure'], 'direct_officer')
+        # Killings gives way only an Eating God: Wu (Wealth, the main qi) shown first stays.
+        named = name_structure(pillars('戊辰 庚戌 甲子 丙寅'))
+        self.assertEqual((named['structure'], named['stem']), ('wealth', '戊'))
 
     def test_ten_gods_of_the_day_master(self) -> None:
         self.assertEqual(ten_god('乙', '庚'), 'direct_officer')
@@ -184,17 +215,11 @@ class TestNamingRules(unittest.TestCase):
         self.assertEqual(ten_god('丙', '壬'), 'seven_killings')
 
 
-if __name__ == '__main__':
-    unittest.main()
-
-
-from eight_characters.structure import (  # noqa: E402
     LUCK_CASES,
     Facts,
     Verdict,
     luck_reading,
 )
-from eight_characters.ten_gods import TEN_GOD_NAMES, TenGodName  # noqa: E402
 
 G: Final[dict[str, TenGodName]] = {
     'friend': 'friend',
@@ -603,19 +628,19 @@ CASES: Final[tuple[tuple[str, Facts, str, dict[str, Verdict]], ...]] = (
     (
         'seven_killings',
         facts('甲', '丙', {'killings': 300, 'eating': 100}),
-        'eating_god',
+        'output',
         {'eating': 'favourable', 'officer': 'strongly_against', 'resource': 'against'},
     ),
     (
         'seven_killings',
         facts('甲', '丙', {'killings': 100, 'eating': 300}),
-        'eating_god',
+        'output',
         {'killings': 'favourable'},
     ),
     (
         'seven_killings',
         facts('甲', '丙', {'killings': 100, 'eating': 100, 'iwealth': 300}),
-        'eating_god',
+        'output',
         {'friend': 'favourable'},
     ),
     (
@@ -786,7 +811,9 @@ CASES: Final[tuple[tuple[str, Facts, str, dict[str, Verdict]], ...]] = (
             'officer': 'favourable',
             'owl': 'favourable',
             'rob': 'favourable',
-            'hurting': 'against',
+            # 但不喜伤食合官: only the Eating God combines a yang Day Master's Officer.
+            'eating': 'against',
+            'hurting': 'idle',
         },
     ),
     (
@@ -835,7 +862,7 @@ CASES: Final[tuple[tuple[str, Facts, str, dict[str, Verdict]], ...]] = (
     (
         'jian_lu_yue_jie',
         facts('甲', '庚丙', {'eating': 100, 'killings': 300}),
-        'killings_and_eating_god',
+        'killings_and_output',
         {'eating': 'favourable'},
     ),
     (
@@ -927,8 +954,6 @@ class TestLuckCases(unittest.TestCase):
             self.assertIn((structure, 'general'), tested)
 
 
-from eight_characters.schools import SEASON_OF_MONTH, standings  # noqa: E402
-from eight_characters.structure import read_structure  # noqa: E402
 
 
 def read(chart: str) -> dict[str, object]:
@@ -998,6 +1023,26 @@ class TestOuterStructures(unittest.TestCase):
         reading = read('庚午 庚戌 甲午 庚午')
         self.assertEqual(reading['outer'], 'following')
 
+    def test_broken_structures_are_not_read(self) -> None:
+        # 建禄月劫，无财官，透煞印，建禄月劫之格败也.
+        self.assertEqual(read('庚子 甲寅 甲子 甲子')['outer'], 'broken')
+        # 阳刃无官煞，刃格败也.
+        self.assertEqual(read('戊辰 丁卯 甲子 甲子')['outer'], 'broken')
+        # 官煞藏而不露: 穆同知's Officer is the main qi of its Wu branch, and is read.
+        reading = read('甲午 癸酉 庚寅 戊寅')
+        self.assertIsNone(reading['outer'])
+        self.assertEqual(reading['naming']['structure'], 'yang_blade')  # type: ignore[index]
+
+    def test_the_killings_chapter_reads_shi_as_output(self) -> None:
+        # 周丞相: 戊被制不能伏煞，时透庚财，即以清食者 (Wu, a Hurting Officer to Ding,
+        # is the 食), and the text's verdict: 不利劫财，伤食皆吉，喜财怕印，透煞亦顺.
+        reading = read('戊戌 甲子 丁未 庚戌')
+        self.assertEqual((reading['chapter'], reading['case']), ('论偏官取运', 'wealth_clears_resource'))
+        verdicts = reading['verdicts']
+        assert isinstance(verdicts, dict)
+        self.assertEqual(verdicts['direct_wealth'], 'favourable')
+        self.assertEqual(verdicts['direct_resource'], 'against')
+
     def test_the_texts_lu_month_chart_reads_its_case(self) -> None:
         # 有用官而印护者，如庚戌、戊子、癸酉、癸亥，金丞相命是也.
         reading = read('庚戌 戊子 癸酉 癸亥')
@@ -1005,3 +1050,7 @@ class TestOuterStructures(unittest.TestCase):
             (reading['chapter'], reading['case']),
             ('论建禄月劫取运', 'officer_and_resource'),
         )
+
+
+if __name__ == '__main__':
+    unittest.main()
