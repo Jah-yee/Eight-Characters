@@ -25,7 +25,7 @@
     503: 'account_check_down',
   };
 
-  const create = ({ dialog, button, state, translate: t, language, embedded, onLanguage, onSignedOut }) => {
+  const create = ({ dialog, button, state, translate: t, language, embedded, onLanguage, onSignedIn, onSignedOut }) => {
     if (!dialog || !button) throw new Error('The account dialog or its button is missing.');
     const part = (id) => {
       const element = dialog.querySelector(`#${id}`);
@@ -279,7 +279,11 @@
       account = later(accountOf(value));
       // The account's language is the page's from now on, until the reader changes it.
       onLanguage(account.language);
+      // Whether the page asked for this sign-in (for a chart, the day or Settings): that
+      // goes on to what it asked for.
+      const requested = waiting !== null;
       closeSignedIn();
+      onSignedIn({ requested });
     };
     // The dialog closes, signed in, and what waited for a sign-in goes on with the
     // account the page holds.

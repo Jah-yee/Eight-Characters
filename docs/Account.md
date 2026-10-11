@@ -45,12 +45,12 @@ hourly limits on codes; a request is dropped once it is an hour old, when the ne
 code is asked for or the account's data is downloaded. Deleting the account leaves its
 requests until then, so that the limits hold.
 
-Charts are calculated, not stored, with one exception you choose for Today: a
-partner's chart, if you save it, with its date, time and place of birth, gender, an
-optional name and its Zi-hour convention. Today is about the chart you are viewing,
-so no chart of your own is kept. Today also keeps where you are, a place and its
-coordinates, and the schools you chose. A partner's chart is another person's data:
-save it only with their consent. You can replace or remove the partner's chart and
+Charts are calculated, not stored, except those you save. A saved chart keeps its
+date, time and place of birth, gender, Zi-hour convention and an optional name: your
+own, if you save it and mark it as yours, and anyone else's you save, with the couples
+you pair them in. Settings also keep where you are, a place and its coordinates, and
+the schools you chose. Someone else's chart is their data: save it only with their
+consent. You can rename, correct or remove a saved chart, end a couple, and forget
 where you are at any time; all of it leaves with the account.
 
 Accounts, with these settings, are also kept in an encrypted backup, which only the

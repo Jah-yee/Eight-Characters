@@ -13,7 +13,7 @@
     '.luck-chip', '.luck-phase', '.luck-identity', '[data-zi-convention]',
     '#compare-sides button', '#compare-swap', '#compare-copy-link', '#compare-close',
     '#compare-cancel', '#create-chart-btn', '.gender-option',
-    '#page-switch button', '#today-page-switch button', '#save-partner-btn', '#settings-close',
+    '#page-switch button', '#today-page-switch button', '#library-btn', '#save-cancel', '#settings-close',
     '#today-language button', '.today-step', '.today-now', '#today-copy-link', '#today-copy-text',
     '#today-print', '#today-settings',
   ].join(',');
@@ -33,7 +33,7 @@
     'back-btn': ['pencil', 'edit'], 'new-chart-btn': ['square-plus', 'new'],
     'compare-btn': ['columns-2', 'compare'], 'compare-swap': ['arrow-left-right', 'swap'],
     'compare-copy-link': ['link-2', 'link'], 'compare-close': ['x', 'comparison_close'],
-    'save-partner-btn': ['user-plus', 'save_partner'], 'settings-close': ['x', 'settings_close'],
+    'settings-close': ['x', 'settings_close'],
     'today-copy-link': ['link-2', 'link'], 'today-copy-text': ['clipboard-list', 'copy_day'],
     'today-print': ['printer', 'print'], 'today-settings': ['settings', 'settings'],
   };
@@ -97,10 +97,13 @@
       [icon, key, caption] = midnight ? ['clock-12', 'midnight', '00:00'] : ['clock-11', 'zi', '23:00']; only = true;
     } else if (node.matches('#compare-sides button')) {
       [icon, key] = node.dataset.compareSide === 'a' ? ['panel-left', 'first'] : ['panel-right', 'second'];
-    } else if (node.id === 'compare-cancel') { icon = 'x'; key = 'cancel'; }
-    else if (node.id === 'create-chart-btn') {
-      const comparison = node.dataset.i18n === 'compare_create';
-      [icon, key] = comparison ? ['columns-2', 'compare_create'] : ['square-plus', 'create'];
+    } else if (node.id === 'compare-cancel' || node.id === 'save-cancel') { icon = 'x'; key = 'cancel'; }
+    else if (node.id === 'library-btn') {
+      icon = 'library'; key = 'library'; label = node.querySelector('.library-label').textContent.trim();
+    } else if (node.id === 'create-chart-btn') {
+      [icon, key] = {
+        compare_create: ['columns-2', 'compare_create'], save_create: ['bookmark-plus', 'save_create'],
+      }[node.dataset.i18n] ?? ['square-plus', 'create'];
     } else if (node.matches('.gender-option')) {
       key = { '': 'gender_none', female: 'gender_female', male: 'gender_male' }[node.querySelector('input').value];
     }

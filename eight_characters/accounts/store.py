@@ -18,14 +18,16 @@ from pathlib import Path
 from typing import Any, Final, cast
 
 from eight_characters.accounts.records import (
-    NO_CHOICE,
+    CHART_LIMIT,
     Birth,
     ChosenSchools,
+    Couple,
     Language,
     Place,
     Plan,
     RecordError,
     RecordKind,
+    SavedChart,
     Settings,
     User,
     decode_settings,
@@ -34,6 +36,7 @@ from eight_characters.accounts.records import (
     is_language,
     is_plan,
     new_id,
+    no_settings,
     normalize_email,
     parse_timestamp,
     settings_value,
@@ -158,6 +161,77 @@ class UnknownUser(StoreError):
 
 class SettingsChanged(StoreError):
     """The account's settings changed after the version a change was made from."""
+
+
+class UnknownChart(StoreError):
+    """The account keeps no chart with that id."""
+
+
+class UnknownCouple(StoreError):
+    """The account has no couple with that id."""
+
+
+class ChartLimit(StoreError):
+    """The account's library is full."""
+
+
+class CoupleLimit(StoreError):
+    """A chart is already in a couple, the most the plan allows."""
+
+
+class DuplicateChart(StoreError):
+    """The birth is saved already, as another of the account's charts."""
+
+
+def _saved(settings: Settings, chart_id: str) -> SavedChart:
+    chart = settings.chart(chart_id)
+    if chart is None:
+        raise UnknownChart('The account keeps no chart with that id.')
+    return chart
+
+
+def _not_saved_elsewhere(
+    settings: Settings, birth: Birth, chart_id: str | None
+) -> None:
+    """DuplicateChart if a saved chart other than `chart_id` is drawn from the birth: a
+    birth is saved once, so the chart on screen names one saved chart at most."""
+    same = settings.chart_of(birth)
+    if same is not None and same.id != chart_id:
+        name = 'an unnamed chart' if same.birth.name is None else same.birth.name
+        raise DuplicateChart(f'This birth is saved already, as {name}.')
+
+
+def _paired(settings: Settings, charts: tuple[str, str]) -> Settings:
+    """The settings with two saved charts paired. UnknownChart if either is not kept,
+    and CoupleLimit if either is already in a couple: in this plan a chart is in one at
+    most. A partner kept from before accounts kept charts waits no longer once paired."""
+    for chart_id in charts:
+        _saved(settings, chart_id)
+        if settings.couple_of(chart_id) is not None:
+            raise CoupleLimit('A chart is in one couple at most.')
+    waiting = settings.pending_partner
+    return replace(
+        settings,
+        couples=(*settings.couples, Couple(new_id(), charts)),
+        pending_partner=None if waiting in charts else waiting,
+    )
+
+
+def _marked(settings: Settings, chart_id: str) -> Settings:
+    """The settings with a saved chart marked as the person's own. A partner kept from
+    before accounts kept charts pairs with it now, unless one of the two is already in a
+    couple, and waits no longer either way. UnknownChart if there is no such chart."""
+    _saved(settings, chart_id)
+    couples = settings.couples
+    waiting = settings.pending_partner
+    if (
+        waiting is not None
+        and waiting != chart_id
+        and settings.couple_of(chart_id) is None
+        and settings.couple_of(waiting) is None
+    ):
+        couples = (*couples, Couple(new_id(), (chart_id, waiting)))
+    return replace(settings, my_chart=chart_id, couples=couples, pending_partner=None)
 
 
 @dataclass(frozen=True)
@@ -652,15 +726,136 @@ class AccountStore:
     # an account that had none: a change made from settings that have changed since
     # raises SettingsChanged and changes nothing, so one tab never undoes another's.
 
-    def put_partner(
-        self, user_id: str, birth: Birth, read: str | None
-    ) -> Settings | None:
-        """Keeps a birth as the account's partner's chart, replacing the one before."""
-        return self._update_settings(user_id, read, lambda s: replace(s, partner=birth))
+    def save_chart(
+        self,
+        user_id: str,
+        birth: Birth,
+        read: str | None,
+        *,
+        mine: bool = False,
+        couple_with: str | None = None,
+    ) -> tuple[Settings | None, str]:
+        """Keeps a birth in the account's library, after the last, under a new id; in
+        the same write, marks it as the person's own (`mine`) or pairs it with a saved
+        chart (`couple_with`). The settings after, and the id. ChartLimit if the library
+        is full, DuplicateChart if the birth is saved already, and UnknownChart or
+        CoupleLimit for a chart it cannot pair with: each changes nothing."""
+        chart_id = new_id()
 
-    def delete_partner(self, user_id: str, read: str | None) -> Settings | None:
-        """Removes the partner's chart, if the account keeps one."""
-        return self._update_settings(user_id, read, lambda s: replace(s, partner=None))
+        def save(settings: Settings) -> Settings:
+            if len(settings.charts) >= CHART_LIMIT:
+                raise ChartLimit(f'An account keeps at most {CHART_LIMIT} charts.')
+            _not_saved_elsewhere(settings, birth, None)
+            saved = replace(
+                settings, charts=(*settings.charts, SavedChart(chart_id, birth))
+            )
+            if couple_with is not None:
+                saved = _paired(saved, (couple_with, chart_id))
+            return _marked(saved, chart_id) if mine else saved
+
+        return self._update_settings(user_id, read, save), chart_id
+
+    def update_chart(
+        self, user_id: str, chart_id: str, birth: Birth, read: str | None
+    ) -> Settings | None:
+        """Corrects a saved chart's birth; it keeps its id, and its place as the
+        person's own chart and in a couple. UnknownChart if the account keeps none with
+        that id, DuplicateChart if another saved chart has that birth."""
+
+        def update(settings: Settings) -> Settings:
+            _saved(settings, chart_id)
+            _not_saved_elsewhere(settings, birth, chart_id)
+            return replace(
+                settings,
+                charts=tuple(
+                    SavedChart(chart.id, birth) if chart.id == chart_id else chart
+                    for chart in settings.charts
+                ),
+            )
+
+        return self._update_settings(user_id, read, update)
+
+    def rename_chart(
+        self, user_id: str, chart_id: str, name: str | None, read: str | None
+    ) -> Settings | None:
+        """Renames a saved chart, or leaves it unnamed; its birth is not charted again, so
+        a chart the engine no longer charts can still be renamed. UnknownChart if there
+        is no such chart."""
+
+        def rename(settings: Settings) -> Settings:
+            chart = _saved(settings, chart_id)
+            return replace(
+                settings,
+                charts=tuple(
+                    SavedChart(chart_id, replace(chart.birth, name=name))
+                    if each.id == chart_id
+                    else each
+                    for each in settings.charts
+                ),
+            )
+
+        return self._update_settings(user_id, read, rename)
+
+    def delete_chart(
+        self, user_id: str, chart_id: str, read: str | None
+    ) -> Settings | None:
+        """Removes a saved chart: it leaves its couple, and stops being the person's
+        own or a partner waiting for a couple. UnknownChart if there is none."""
+
+        def delete(settings: Settings) -> Settings:
+            _saved(settings, chart_id)
+            return replace(
+                settings,
+                charts=tuple(
+                    chart for chart in settings.charts if chart.id != chart_id
+                ),
+                couples=tuple(
+                    couple
+                    for couple in settings.couples
+                    if chart_id not in couple.charts
+                ),
+                my_chart=None if settings.my_chart == chart_id else settings.my_chart,
+                pending_partner=None
+                if settings.pending_partner == chart_id
+                else settings.pending_partner,
+            )
+
+        return self._update_settings(user_id, read, delete)
+
+    def set_my_chart(
+        self, user_id: str, chart_id: str, read: str | None
+    ) -> Settings | None:
+        """Marks a saved chart as the person's own. A partner kept from before accounts
+        kept charts pairs with it now, unless one of the two is already in a couple.
+        UnknownChart if there is no such chart."""
+        return self._update_settings(user_id, read, lambda s: _marked(s, chart_id))
+
+    def clear_my_chart(self, user_id: str, read: str | None) -> Settings | None:
+        """No saved chart is the person's own any more."""
+        return self._update_settings(user_id, read, lambda s: replace(s, my_chart=None))
+
+    def add_couple(
+        self, user_id: str, charts: tuple[str, str], read: str | None
+    ) -> Settings | None:
+        """Pairs two saved charts. UnknownChart if either is not kept, and CoupleLimit
+        if either is already in a couple: in this plan a chart is in at most one."""
+        return self._update_settings(user_id, read, lambda s: _paired(s, charts))
+
+    def delete_couple(
+        self, user_id: str, couple_id: str, read: str | None
+    ) -> Settings | None:
+        """Parts a couple; both charts stay in the library. UnknownCouple if the
+        account has no couple with that id."""
+
+        def part(settings: Settings) -> Settings:
+            if all(couple.id != couple_id for couple in settings.couples):
+                raise UnknownCouple('The account has no couple with that id.')
+            return replace(
+                settings,
+                couples=tuple(c for c in settings.couples if c.id != couple_id),
+            )
+
+        return self._update_settings(user_id, read, part)
 
     def put_place(
         self, user_id: str, place: Place, read: str | None
@@ -715,12 +910,7 @@ class AccountStore:
             if (None if current is None else current.updated_at) != read:
                 raise SettingsChanged('The settings changed since they were read.')
             now = self._now()
-            base = current or Settings(
-                partner=None,
-                place=None,
-                schools=NO_CHOICE,
-                updated_at=now,
-            )
+            base = current or no_settings(now)
             changed = change(base)
             if changed == base:
                 return current

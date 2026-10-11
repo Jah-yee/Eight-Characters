@@ -1,5 +1,48 @@
 # Changelog
 
+## 0.50.0
+
+Saved charts, my chart and couples, kept in the account, and the pages that use them
+(#77: #78, the API, and #79, the pages).
+
+### Added
+- **Saved charts, in the account** (`docs/Developer/Accounts.md`): `charts`, `my_chart`
+  and `couples` in the account's settings record, which the backup encrypts. A saved
+  chart is a birth under an id, with an optional name; a birth is saved once, and an
+  account keeps at most 50. A chart is in one couple at most.
+- **The routes**: `POST /api/account/charts` (201, with `saved`, the new id; `mine` and
+  `couple_with` mark or pair it in the same write), `PUT /api/account/charts/{id}`,
+  `PUT /api/account/charts/{id}/name`, `DELETE /api/account/charts/{id}`, `PUT` and
+  `DELETE /api/account/my-chart`, `POST /api/account/couples` (201) and
+  `DELETE /api/account/couples/{id}`.
+- **The library**, from a chart's heading (`docs/Standard-Settings.md`): the saved
+  charts with their pillars in their elements' colours, your chart marked, each chart's
+  partner named; choosing one opens it, and **Save the chart on screen** saves it. The
+  heading names the chart on screen if it is saved.
+- **Settings: your chart, couples and saved charts**: mark your chart, pair two charts,
+  add a new birth as yours or as a partner (saved and paired at once), end a couple,
+  and rename, correct or remove a saved chart. A new or corrected birth is entered in
+  the birth form, at `#save?…`.
+- **Signing in to your chart**: signed in, the site's bare address opens your chart.
+
+### Changed
+- **Today reads the couple of the chart on screen**: its partner's day and Marriage come
+  with a saved chart in a couple, read from that chart's side, and the partner's chart
+  reads the same couple from the other. A chart that is not saved, or not in a couple,
+  has no partner side.
+- **The record is schema 3.** Settings kept with a partner read it as a saved chart,
+  under an id derived from its birth, waiting to pair with the first chart you mark as
+  yours; nothing is rewritten until the account's next change, and schema 1 and 2
+  backups still restore. Rolling back after that needs a restore from the backup.
+- **Library refusals answer 400**, and ids that are not 32 lowercase hex digits too;
+  every `/api/account` answer says `Cache-Control: no-store`.
+- **What is kept** (`docs/Account.md`, the account dialog): the charts you save, your
+  own included, with their couples; save someone else's chart only with their consent.
+
+### Removed
+- **Save as partner**, and `PUT` and `DELETE /api/account/partner`. A tab opened before
+  the update shows Settings' and Today's answer error until reloaded.
+
 ## 0.49.1
 
 ### Fixed

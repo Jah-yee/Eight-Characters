@@ -66,7 +66,7 @@ focus that was on them goes to the chart's cards. See
     a chart with a gender the years before the luck pillars and each decade, which
     open as a link opens them, in one step of the history;
   - the display, the other language and the Evolution view;
-  - Copy link, Copy as text, Edit, New chart, Compare, Save as partner, Print, Close
+  - Copy link, Copy as text, Edit, New chart, Compare, Saved charts, Print, Close
     (when a topic is open), Keys and Settings.
 
   In a comparison, each chart's commands are its own: its topics, its display, Copy

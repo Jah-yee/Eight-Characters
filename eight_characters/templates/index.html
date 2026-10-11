@@ -35,9 +35,21 @@
     <span id="compare-note-text"></span>
     <button type="button" id="compare-cancel" class="bar-action" data-i18n="compare_cancel">Peruuta</button>
   </p>
+  <!-- A birth added or corrected from Settings: what it saves, and back to Settings. -->
+  <p id="save-note" class="compare-note save-note hidden">
+    <span id="save-note-text"></span>
+    <button type="button" id="save-cancel" class="bar-action" data-i18n="cancel">Peruuta</button>
+  </p>
 
   <!-- Validated by app.js, so messages follow the page language. -->
   <form id="chart-form" novalidate>
+
+    <!-- A saved birth's name, asked only when the form saves one. -->
+    <div class="field-group save-name-group hidden" id="save-name-group">
+      <label for="save-name" data-i18n="save_chart_name">Nimi (valinnainen)</label>
+      <input type="text" id="save-name" maxlength="80" autocomplete="off" spellcheck="false" aria-describedby="save-name-status">
+      <div id="save-name-status" class="field-status" aria-live="polite"></div>
+    </div>
 
     <!-- Date, Time, Location -->
     <div class="datetime-row">
@@ -97,6 +109,10 @@
       <div class="chart-identity">
         <h1 class="name" id="chart-date"></h1>
         <p class="solar-time" id="chart-solar-time"></p>
+        <!-- The saved charts: the chart on screen named if it is one (library.js). -->
+        <button type="button" id="library-btn" class="library-btn" aria-haspopup="dialog" data-saved="unknown">
+          <span class="library-label">Tallennetut kartat</span>
+        </button>
       </div>
       <div class="chart-tools">
         <!-- The chart, or its day (today.js). -->
@@ -132,7 +148,6 @@
         <button type="button" id="back-btn" class="bar-action" data-i18n="edit_chart">Muokkaa</button>
         <button type="button" id="new-chart-btn" class="bar-action" data-i18n="new_chart">Uusi kartta</button>
         <button type="button" id="compare-btn" class="bar-action" data-i18n="compare">Vertaa</button>
-        <button type="button" id="save-partner-btn" class="bar-action" data-i18n="save_partner">Tallenna kumppaniksi</button>
       </div>
       <div id="zi-switch" class="zi-switch hidden" role="group" aria-labelledby="zi-switch-note"></div>
       <ul id="chart-notices" class="chart-notices hidden"></ul>
@@ -290,8 +305,8 @@
 <!-- ═══════════════════════════════════════════════════
      VIEW 5 — SETTINGS (hidden initially)
      ═══════════════════════════════════════════════════ -->
-<!-- What the account keeps for the day: a partner's chart, where you are, and the
-     schools (settings.js). -->
+<!-- What the account keeps: its saved charts, your own among them, the couples they
+     form, where you are, and the schools (settings.js). -->
 <div id="settings-view" class="settings-container hidden">
   <header class="compare-bar settings-bar">
     <h1 class="compare-title" data-i18n="settings_title">Asetukset</h1>
@@ -301,9 +316,17 @@
   </header>
   <div class="settings-body">
     <p id="settings-status" class="settings-status hidden" role="status"></p>
-    <section id="settings-partner" class="settings-section" aria-labelledby="settings-partner-title">
-      <h2 id="settings-partner-title" class="settings-heading" data-i18n="settings_partner">Kumppanin kartta</h2>
-      <div id="settings-partner-body" class="settings-partner"></div>
+    <section id="settings-mine" class="settings-section" aria-labelledby="settings-mine-title">
+      <h2 id="settings-mine-title" class="settings-heading" data-i18n="settings_mine">Oma karttasi</h2>
+      <div id="settings-mine-body" class="settings-library"></div>
+    </section>
+    <section id="settings-couples" class="settings-section" aria-labelledby="settings-couples-title">
+      <h2 id="settings-couples-title" class="settings-heading" data-i18n="settings_couples">Parit</h2>
+      <div id="settings-couples-body" class="settings-library"></div>
+    </section>
+    <section id="settings-charts" class="settings-section" aria-labelledby="settings-charts-title">
+      <h2 id="settings-charts-title" class="settings-heading" data-i18n="settings_charts">Tallennetut kartat</h2>
+      <div id="settings-charts-body" class="settings-library"></div>
     </section>
     <section id="settings-place" class="settings-section" aria-labelledby="settings-place-title">
       <h2 id="settings-place-title" class="settings-heading" data-i18n="settings_place">Missä olet</h2>
@@ -422,21 +445,32 @@
   <p id="palette-empty" class="palette-empty hidden" data-i18n="palette_empty">Ei komentoa</p>
 </dialog>
 
-<!-- Saving the chart on screen as the partner's: its name, and what it replaces. -->
-<dialog id="partner-dialog" class="chart-dialog partner-dialog" aria-labelledby="partner-dialog-title">
-  <form id="partner-form" method="dialog" novalidate>
-    <h2 id="partner-dialog-title" data-i18n="save_partner_title">Tallenna kumppanin kartaksi</h2>
-    <p id="partner-dialog-chart" class="account-lead"></p>
-    <p id="partner-dialog-replaces" class="account-note hidden"></p>
+<!-- The saved charts, from the chart's heading (library.js). -->
+<dialog id="library-dialog" class="chart-dialog library-dialog" aria-labelledby="library-title">
+  <h2 id="library-title" data-i18n="library_title">Tallennetut kartat</h2>
+  <p id="library-status" class="settings-status hidden" role="status"></p>
+  <ul id="library-list" class="library-list"></ul>
+  <div class="account-actions">
+    <button type="button" id="library-save" class="bar-action hidden" data-i18n="library_save">Tallenna tämä kartta</button>
+    <button type="button" id="library-settings" class="bar-action" data-i18n="library_settings">Asetukset</button>
+    <button type="button" id="library-close" class="bar-action" data-i18n="library_close">Sulje</button>
+  </div>
+</dialog>
+
+<!-- Saving the chart on screen: its name, and the consent it needs. -->
+<dialog id="save-chart-dialog" class="chart-dialog partner-dialog" aria-labelledby="save-chart-title">
+  <form id="save-chart-form" method="dialog" novalidate>
+    <h2 id="save-chart-title" data-i18n="save_chart_title">Tallenna kartta</h2>
+    <p id="save-chart-chart" class="account-lead"></p>
     <div class="account-field">
-      <label for="partner-name" data-i18n="save_partner_name">Nimi (valinnainen)</label>
-      <input type="text" id="partner-name" maxlength="80" autocomplete="off" spellcheck="false" aria-describedby="partner-name-status">
-      <p id="partner-name-status" class="field-status" aria-live="polite"></p>
+      <label for="save-chart-name" data-i18n="save_chart_name">Nimi (valinnainen)</label>
+      <input type="text" id="save-chart-name" maxlength="80" autocomplete="off" spellcheck="false" aria-describedby="save-chart-status">
+      <p id="save-chart-status" class="field-status" aria-live="polite"></p>
     </div>
-    <p class="account-note" data-i18n="save_partner_consent"></p>
+    <p class="account-note" data-i18n="save_chart_consent"></p>
     <div class="account-actions">
-      <button type="submit" id="partner-save" class="bar-action" value="save" data-i18n="save_partner_confirm">Tallenna</button>
-      <button type="button" id="partner-cancel" class="bar-action" data-i18n="cancel">Peruuta</button>
+      <button type="submit" id="save-chart-save" class="bar-action" value="save" data-i18n="save_chart_confirm">Tallenna</button>
+      <button type="button" id="save-chart-cancel" class="bar-action" data-i18n="cancel">Peruuta</button>
     </div>
   </form>
 </dialog>
@@ -536,6 +570,7 @@
 <script src="/static/compare.js?v={{ app_version }}"></script>
 <script src="/static/account.js?v={{ app_version }}"></script>
 <script src="/static/today.js?v={{ app_version }}"></script>
+<script src="/static/library.js?v={{ app_version }}"></script>
 <script src="/static/settings.js?v={{ app_version }}"></script>
 <script src="/static/app.js?v={{ app_version }}"></script>
 </body>

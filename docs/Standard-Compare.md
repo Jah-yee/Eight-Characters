@@ -16,8 +16,8 @@ Each chart is the chart view itself, in a frame of its own:
 - the topics, which open in its own panel, a sheet over the foot of its frame;
 - the pillars, their arcs and hidden stems, and the pointing from its panel.
 
-A compared chart has no Chart · Today and no Save as partner: those belong to a chart
-on its own page.
+A compared chart has no Chart · Today and no library: those belong to a chart on its
+own page.
 
 Each scrolls on its own. The two charts have nothing drawn between them: the
 relationships are each chart's own. A chart whose link has a gender has its own

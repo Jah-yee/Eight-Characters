@@ -111,43 +111,56 @@ class TestToday(unittest.TestCase):
                 self.assertEqual(reply.status_code, 400, reply.text)
 
     def test_what_the_account_keeps_is_what_the_page_sends(self) -> None:
-        # The page reads the partner's chart, the place and the schools from the
-        # settings and sends them with the chart it is on.
+        # The page sends the chart it is on and, when that chart is in a couple, the
+        # other chart of the couple, with the place and the schools the account keeps.
         read = self.client.get('/api/account/settings').json()['updated_at']
-        for path, body in (
-            ('/api/account/partner', PARTNER),
-            ('/api/account/place', {'place': LISBON}),
-        ):
-            kept = self.client.put(
-                path, json={**body, 'key': self.key, 'updated_at': read}
+        saved: list[str] = []
+        for birth in (CHART, PARTNER):
+            kept = self.client.post(
+                '/api/account/charts',
+                json={**birth, 'key': self.key, 'updated_at': read},
             )
-            self.assertEqual(kept.status_code, 200, kept.text)
+            self.assertEqual(kept.status_code, 201, kept.text)
+            saved.append(kept.json()['saved'])
             read = kept.json()['updated_at']
-        chosen = self.client.patch(
-            '/api/account/schools',
-            json={'key': self.key, 'updated_at': read, 'transits': 'whole'},
-        )
-        settings = chosen.json()
-        partner = {
-            key: value
-            for key, value in settings['partner'].items()
-            if key not in ('pillars', 'problem')
+        for method, path, body in (
+            ('POST', '/api/account/couples', {'charts': saved}),
+            ('PUT', '/api/account/place', {'place': LISBON}),
+            ('PATCH', '/api/account/schools', {'transits': 'whole'}),
+        ):
+            kept = self.client.request(
+                method, path, json={**body, 'key': self.key, 'updated_at': read}
+            )
+            self.assertIn(kept.status_code, (200, 201), kept.text)
+            read = kept.json()['updated_at']
+        settings = kept.json()
+        (couple,) = settings['couples']
+        births = {
+            chart['id']: {
+                key: value
+                for key, value in chart.items()
+                if key not in ('id', 'pillars', 'problem')
+            }
+            for chart in settings['charts']
         }
-        reply = self.client.post(
-            '/api/today',
-            json={
-                'date': DAY,
-                'lang': 'en',
-                'place': settings['place'],
-                'charts': {'self': CHART, 'partner': partner},
-                'schools': settings['chosen'],
-            },
-        )
-        self.assertEqual(reply.status_code, 200, reply.text)
-        answer = reply.json()
-        self.assertEqual(answer['place']['name'], LISBON['name'])
-        self.assertEqual(answer['schools'], settings['schools'])
-        self.assertIsNotNone(answer['marriage'])
+        on_screen, other = couple['charts']
+        for chart, partner in ((on_screen, other), (other, on_screen)):
+            with self.subTest(chart=chart):
+                reply = self.client.post(
+                    '/api/today',
+                    json={
+                        'date': DAY,
+                        'lang': 'en',
+                        'place': settings['place'],
+                        'charts': {'self': births[chart], 'partner': births[partner]},
+                        'schools': settings['chosen'],
+                    },
+                )
+                self.assertEqual(reply.status_code, 200, reply.text)
+                answer = reply.json()
+                self.assertEqual(answer['place']['name'], LISBON['name'])
+                self.assertEqual(answer['schools'], settings['schools'])
+                self.assertIsNotNone(answer['marriage'])
 
     def test_a_date_is_refused_unless_the_run_fits_the_engines_years(self) -> None:
         for text in (

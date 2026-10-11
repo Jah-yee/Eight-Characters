@@ -1,9 +1,8 @@
-# Settings: what the account keeps for a chart's day
+# Settings: what the account keeps
 
-Settings keep what [Today](Standard-Today.md) asks for with the chart on screen: a
-partner's chart, where you are, and the schools the day follows. Today is about the
-chart on screen, so there is no chart of your own to keep. Everything Settings show
-comes from the API (`GET /api/account/settings`, `GET /api/schools`).
+Settings keep the account's saved charts, which of them is your own, the couples they
+form, where you are, and the schools [Today](Standard-Today.md) follows. Everything
+Settings show comes from the API (`GET /api/account/settings`, `GET /api/schools`).
 
 ## Opening them
 
@@ -12,19 +11,51 @@ comes from the API (`GET /api/account/settings`, `GET /api/schools`).
 were opened from. Settings are not offered in a comparison's frames. Each opening reads
 the settings anew, and only the latest one draws them or says why it could not.
 
-## Your partner's chart
+## Saved charts and the library
 
-A chart's bar has **Save as partner**. It asks for a name (optional: one line, at most
-80 characters), says which saved partner's chart it replaces, and keeps the chart as it
-is on screen: its date, time and place, its gender and its Zi-hour convention. A chart
-needs a gender to be saved, since the day reads its luck pillars; without one, Save as
-partner says so. A partner's chart is another person's data: save it only with their
-consent.
+A chart link holds a birth, never an id, so a link means the same chart to anyone. The
+chart on screen is a saved chart when its birth is one: the same day, time, pass of an
+hour the clocks repeat, place on the globe, gender and Zi-hour convention (the API saves
+a birth once). The Zi switch, another gender or another pass make another chart.
 
-Settings show the partner's name, birth and four pillars, each with its characters and
-pinyin, or why the engine no longer charts it. **Open the chart** opens it as a chart
-link, with its pass of an hour the clocks repeat where the saved birth names one;
-**Remove** removes it.
+A chart's heading has a button that names it: its saved name, or that it is unsaved.
+It opens **the library**: the saved charts, each with its birth and four pillars (each
+character in its element's colours, with its pinyin), Your chart marked in words, and
+each chart's partner named. Choosing one opens it; the chart on screen is marked.
+**Save the chart on screen** asks for a name (optional: one line, at most 80 characters)
+and keeps the chart as it is on screen: its date, time and place, its pass, its gender
+and its Zi-hour convention. A chart needs a gender to be saved, since the day reads its
+luck pillars; without one, the library says so. Someone else's chart is their data:
+save it only with their consent. The library is also among the commands. It is not in
+a comparison's frames.
+
+Settings have three parts for them:
+- **Your chart**: the chart marked as yours, with Open and Unmark; a choice from the
+  saved charts to mark; and **Add a new birth**, saved as yours. Signed in, the site's
+  bare address opens your chart (see below).
+- **Couples**: each couple, with both charts' pillars, and End the couple, which keeps
+  both charts. Two saved charts not in a couple can be paired; **Add the partner as a
+  new birth** saves one and pairs it with the chosen chart in one write. A chart is in
+  one couple at most. A partner's chart kept from before accounts kept charts is
+  listed as waiting, and pairs with your chart once you mark one.
+- **Saved charts**: each with Open, Rename, Correct the birth and Remove. Remove asks
+  once more on its own button; removing a chart ends its couple and unmarks it. A chart
+  the engine no longer charts says why, and can still be renamed or removed.
+
+**Add a new birth**, **Add the partner as a new birth** and **Correct the birth** open
+the birth form at `#save?as=mine`, `#save?as=partner&with=<id>` or
+`#save?as=correct&chart=<id>`. The form says what it saves, asks for a name, needs a
+gender, and checks the birth as it checks a chart's; Save keeps it and goes back to
+Settings, and Cancel goes back without saving. A correction keeps the chart's Zi-hour
+convention, and its pass while its day and time are unchanged.
+
+## Signing in to your chart
+
+Signed in, a visit to the site's bare address opens your chart, replacing the address,
+so Back does not come there again; with none marked, the form. Signing in from the
+account button on the empty form does the same. Every other address keeps its
+destination: a chart link, Today, a comparison, Settings, and a chart asked for from
+the form before signing in. New chart and Edit still open the form.
 
 ## Where you are
 
@@ -49,8 +80,8 @@ kept, the last deciding. A change made from settings another tab or browser has 
 since is refused, and so are the changes made after it from the same settings: the page
 shows the settings as they are now, to be chosen again. A session that ended asks for a
 sign-in, and the change is not repeated. Another account signed in in this browser, and
-a change the API refuses, are each said on the page. Focus stays on the preset or action
-that had it, or, once that is gone, on the first control of its part. A sign-out leaves
+a change the API refuses, are each said on the page. Focus stays on the preset, choice or
+action that had it, or, once that is gone, on the first control of its part. A sign-out leaves
 nothing of the account on the page, and until the settings are read again nothing can be
 changed.
 

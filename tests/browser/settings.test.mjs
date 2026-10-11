@@ -1,8 +1,9 @@
 // Run with Node's built-in test runner and an explicitly selected Playwright install.
-// Settings: what the account keeps for a chart's day (docs/Standard-Settings.md). Every
-// change is the API's, made with the account's key and the settings it was made from;
-// one made from settings another tab has changed since is refused, and the page shows
-// the settings as they are.
+// Settings: what the account keeps (docs/Standard-Settings.md): its saved charts, your
+// own among them, the couples they form, where you are and the schools. Every change is
+// the API's, made with the account's key and the settings it was made from; one made
+// from settings another tab has changed since is refused, and the page shows the
+// settings as they are. The library in a chart's heading saves and opens charts.
 import {
   assert, describe, it, engineName, profiles, openLink, settled, withPage, playwright, HELSINKI, TROMSO,
 } from './chart-helpers.mjs';
@@ -22,22 +23,26 @@ const chartLink = (parts = {}) => `/#chart?${new URLSearchParams({
 })}`;
 
 const read = (page) => page.evaluate(async () => (await fetch('/api/account/settings')).json());
-// A change made elsewhere, as another tab makes it, from the settings as they are now.
+// A change made elsewhere, as another tab makes it, from the settings as they are now:
+// its answer.
 async function changeElsewhere(page, method, path, body) {
-  const status = await page.evaluate(async ({ method, path, body }) => {
+  const { status, value } = await page.evaluate(async ({ method, path, body }) => {
     const now = await (await fetch('/api/account/settings')).json();
     const response = await fetch(path, {
       method, headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...body, key: now.key, updated_at: now.updated_at }),
     });
-    return response.status;
+    return { status: response.status, value: await response.json() };
   }, { method, path, body });
-  assert.equal(status, 200);
+  assert.ok(status === 200 || status === 201, `${method} ${path}: ${status}`);
+  return value;
 }
-// The account starts from nothing kept: no partner, no place, the default schools.
+// A birth saved elsewhere: its id.
+const saveElsewhere = async (page, birth, more = {}) => (await changeElsewhere(page, 'POST', '/api/account/charts', { ...birth, ...more })).saved;
+// The account starts from nothing kept: no saved chart, no place, the default schools.
 async function reset(page) {
   await page.goto(new URL('/', process.env.EC_BASE_URL).href);
-  await changeElsewhere(page, 'DELETE', '/api/account/partner', {});
+  for (const chart of (await read(page)).charts) await changeElsewhere(page, 'DELETE', `/api/account/charts/${chart.id}`, {});
   await changeElsewhere(page, 'DELETE', '/api/account/place', {});
   await changeElsewhere(page, 'PATCH', '/api/account/schools', { favourable: null, season: null, transits: null });
 }
@@ -46,7 +51,15 @@ const goTo = (page, hash) => page.evaluate((hash) => {
   history.pushState(null, '', hash);
   dispatchEvent(new PopStateEvent('popstate'));
 }, hash);
-const partnerNamed = (name) => ({ name, date: '1975-08-14', time: '07:45', place: PLACE, gender: 'female', zi: 'split_midnight' });
+const partnerNamed = (name, date = '1975-08-14') => ({ name, date, time: '07:45', place: PLACE, gender: 'female', zi: 'split_midnight' });
+// The chart on screen, as the library keeps it.
+const SCREEN = { date: BIRTH.date, time: BIRTH.time, place: PLACE, gender: BIRTH.gender, zi: 'split_midnight' };
+const nameOnScreen = (page) => page.locator('#library-btn .library-label').textContent();
+async function openLibrary(page) {
+  await page.locator('#library-btn').click();
+  await page.locator('#library-dialog').waitFor({ state: 'visible' });
+  await page.waitForFunction(() => !document.getElementById('library-dialog').hasAttribute('aria-busy'));
+}
 async function openSettings(page) {
   await page.goto(new URL('/#settings', process.env.EC_BASE_URL).href);
   await page.locator('#settings-view').waitFor({ state: 'visible' });
@@ -77,7 +90,9 @@ for (const profile of profiles) {
       }
       assert.equal(await page.locator('fieldset[data-setting="favourable"] input[value="structure"]').count(), 0);
       assert.match(await page.locator('#settings-place-now').textContent(), /No place is set/);
-      assert.match(await page.locator('#settings-partner-body').textContent(), /No partner’s chart is saved/);
+      assert.match(await page.locator('#settings-mine-body').textContent(), /No chart is marked as yours/);
+      assert.match(await page.locator('#settings-couples-body').textContent(), /No couples/);
+      assert.match(await page.locator('#settings-charts-body').textContent(), /No saved charts/);
       // Close goes back to the page it was opened from.
       await page.locator('#settings-close').click();
       await page.locator('#input-view').waitFor({ state: 'visible' });
@@ -143,89 +158,80 @@ for (const profile of profiles) {
       assert.equal(await page.locator('#settings-view').getAttribute('aria-busy'), null);
     });
 
-    check('a partner read elsewhere since Settings were drawn is not removed from their old controls', async (page) => {
+    check('a chart saved elsewhere since Settings were drawn is not removed from their old controls', async (page) => {
       await reset(page);
-      const partner = (name) => ({ name, date: '1975-08-14', time: '07:45', place: PLACE, gender: 'female', zi: 'split_midnight' });
-      await changeElsewhere(page, 'PUT', '/api/account/partner', partner('First'));
+      await saveElsewhere(page, partnerNamed('First'));
       await openLink(page, chartLink(), { place: HELSINKI });
-      const to = (hash) => page.evaluate((hash) => {
-        history.pushState(null, '', hash);
-        dispatchEvent(new PopStateEvent('popstate'));
-      }, hash);
-      await to('#settings');
+      await goTo(page, '#settings');
       await page.locator('#settings-view').waitFor({ state: 'visible' });
       await page.waitForFunction(() => !document.getElementById('settings-view').hasAttribute('aria-busy'));
-      assert.equal(await page.locator('.settings-partner-name').textContent(), 'First');
-      // Back on the chart, whose bar reads the settings: another partner was saved elsewhere.
+      assert.match(await page.locator('#settings-charts-body').textContent(), /First/);
+      // Back on the chart, whose library reads the settings: another chart was saved elsewhere.
       await page.goBack();
       await page.locator('#chart-view').waitFor({ state: 'visible' });
-      await changeElsewhere(page, 'PUT', '/api/account/partner', partner('Replacement'));
-      await page.locator('#save-partner-btn').click();
-      await page.locator('#partner-dialog').waitFor({ state: 'visible' });
-      assert.match(await page.locator('#partner-dialog-replaces').textContent(), /Replacement/);
-      await page.locator('#partner-cancel').click();
+      await saveElsewhere(page, partnerNamed('Second', '1976-03-02'));
+      await openLibrary(page);
+      assert.equal(await page.locator('#library-list .library-chart').count(), 2);
+      await page.locator('#library-close').click();
       // Settings opened again cannot read the settings: the old controls are still there.
       const refuse = (route) => route.fulfill({ status: 500, json: { detail: 'Stopped by the test.' } });
       await page.route('**/api/account/settings', refuse);
-      await to('#settings');
+      await goTo(page, '#settings');
       await page.locator('#settings-status').waitFor({ state: 'visible' });
-      assert.equal(await page.locator('.settings-partner-name').textContent(), 'First');
-      await page.locator('[data-settings-action="remove"]').click();
+      assert.doesNotMatch(await page.locator('#settings-charts-body').textContent(), /Second/);
+      const remove = page.locator('#settings-charts-body [data-settings-action="remove"]');
+      await remove.click();
+      await remove.click();
       await page.waitForFunction(() => document.getElementById('settings-status').textContent.includes('changed elsewhere'));
       await page.unroute('**/api/account/settings', refuse);
-      assert.equal((await read(page)).partner.name, 'Replacement', 'the partner not shown was not removed');
-      assert.equal(await page.locator('.settings-partner-name').textContent(), 'Replacement');
+      assert.deepEqual((await read(page)).charts.map((chart) => chart.name), ['First', 'Second'], 'nothing was removed unseen');
+      await page.waitForFunction(() => document.getElementById('settings-charts-body').textContent.includes('Second'));
     });
 
     check('Open, on Settings drawn before a removal read elsewhere, opens the chart they show', async (page) => {
       await reset(page);
-      await changeElsewhere(page, 'PUT', '/api/account/partner', partnerNamed('First'));
+      const first = await saveElsewhere(page, partnerNamed('First'));
       await openLink(page, chartLink(), { place: HELSINKI });
       await goTo(page, '#settings');
       await page.locator('#settings-view').waitFor({ state: 'visible' });
       await page.waitForFunction(() => !document.getElementById('settings-view').hasAttribute('aria-busy'));
       await page.goBack();
       await page.locator('#chart-view').waitFor({ state: 'visible' });
-      // Removed elsewhere, and read so by the chart's Save as partner.
-      await changeElsewhere(page, 'DELETE', '/api/account/partner', {});
-      await page.locator('#save-partner-btn').click();
-      await page.locator('#partner-dialog').waitFor({ state: 'visible' });
-      assert.equal(await page.locator('#partner-dialog-replaces').isHidden(), true);
-      await page.locator('#partner-cancel').click();
+      // Removed elsewhere, and read so by the chart's library.
+      await changeElsewhere(page, 'DELETE', `/api/account/charts/${first}`, {});
+      await openLibrary(page);
+      assert.match(await page.locator('#library-list').textContent(), /No saved charts yet/);
+      await page.locator('#library-close').click();
       const refuse = (route) => route.fulfill({ status: 500, json: { detail: 'Stopped by the test.' } });
       await page.route('**/api/account/settings', refuse);
       await goTo(page, '#settings');
       await page.locator('#settings-status').waitFor({ state: 'visible' });
-      await page.locator('[data-settings-action="open"]').click();
+      await page.locator('#settings-charts-body [data-settings-action="open"]').click();
       await page.locator('#chart-view').waitFor({ state: 'visible' });
       assert.equal(await page.evaluate(() => new URLSearchParams(location.hash.split('?')[1]).get('date')), '1975-08-14');
       await page.unroute('**/api/account/settings', refuse);
     });
 
-    check('Save as partner is made from the settings its dialog read, and names a partner read since', async (page) => {
+    check('Save the chart on screen is made from the settings its dialog read', async (page) => {
       await reset(page);
-      await changeElsewhere(page, 'PUT', '/api/account/partner', partnerNamed('First'));
       await openLink(page, chartLink(), { place: HELSINKI });
-      await page.locator('#save-partner-btn').click();
-      await page.locator('#partner-dialog').waitFor({ state: 'visible' });
-      assert.match(await page.locator('#partner-dialog-replaces').textContent(), /First/);
-      // Another partner saved elsewhere, and the settings read again behind the dialog.
-      await changeElsewhere(page, 'PUT', '/api/account/partner', partnerNamed('Replacement'));
-      const readAgain = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/account/settings'
-        && response.request().method() === 'GET');
-      await page.evaluate(() => document.getElementById('save-partner-btn').click());
-      await readAgain;
-      await page.waitForTimeout(200);
-      await page.locator('#partner-save').click();
-      await page.waitForFunction(() => document.getElementById('partner-name-status').textContent !== '');
-      assert.match(await page.locator('#partner-name-status').textContent(), /changed elsewhere/);
-      assert.match(await page.locator('#partner-dialog-replaces').textContent(), /Replacement/);
-      assert.equal((await read(page)).partner.name, 'Replacement', 'nothing was replaced unseen');
-      await page.locator('#partner-save').click();
-      await page.locator('#partner-dialog').waitFor({ state: 'hidden' });
-      const kept = (await read(page)).partner;
+      await openLibrary(page);
+      await page.locator('#library-save').click();
+      await page.locator('#save-chart-dialog').waitFor({ state: 'visible' });
+      // Another chart saved elsewhere meanwhile: the save is refused, and made again from
+      // the settings read since.
+      await saveElsewhere(page, partnerNamed('Elsewhere'));
+      await page.locator('#save-chart-save').click();
+      await page.waitForFunction(() => document.getElementById('save-chart-status').textContent !== '');
+      assert.match(await page.locator('#save-chart-status').textContent(), /changed elsewhere/);
+      assert.deepEqual((await read(page)).charts.map((chart) => chart.name), ['Elsewhere'], 'nothing was saved unseen');
+      await page.locator('#save-chart-save').click();
+      await page.locator('#save-chart-dialog').waitFor({ state: 'hidden' });
+      const kept = (await read(page)).charts.at(-1);
       assert.equal(kept.date, BIRTH.date);
       assert.equal(kept.name, null);
+      await page.waitForFunction(() => document.getElementById('library-btn').dataset.saved === 'true');
+      assert.equal(await nameOnScreen(page), 'Unnamed chart');
     });
 
     check('a place picked while the settings cannot be read is not saved, and the page says why', async (page) => {
@@ -328,114 +334,191 @@ for (const profile of profiles) {
       await page.waitForFunction(() => document.getElementById('settings-status').classList.contains('hidden'));
     });
 
-    check('Save as partner keeps the chart on screen, named as text, and Settings opens and removes it', async (page) => {
+    check('the chart on screen is saved, named as text; the library opens it, and Settings removes it', async (page) => {
       await reset(page);
       await openLink(page, chartLink(), { place: HELSINKI });
-      await page.locator('#save-partner-btn').click();
-      await page.locator('#partner-dialog').waitFor({ state: 'visible' });
-      assert.equal(await page.locator('#partner-dialog-replaces').isHidden(), true);
-      const name = 'Partner <img src=x onerror=window.__named=1>';
-      await page.locator('#partner-name').fill(name);
-      await page.locator('#partner-save').click();
-      await page.locator('#partner-dialog').waitFor({ state: 'hidden' });
-      const kept = (await read(page)).partner;
+      await page.waitForFunction(() => document.getElementById('library-btn').dataset.saved === 'false');
+      assert.equal(await nameOnScreen(page), 'Unsaved chart');
+      await openLibrary(page);
+      assert.match(await page.locator('#library-list').textContent(), /No saved charts yet/);
+      await page.locator('#library-save').click();
+      await page.locator('#save-chart-dialog').waitFor({ state: 'visible' });
+      const name = 'Saved <img src=x onerror=window.__named=1>';
+      await page.locator('#save-chart-name').fill(name);
+      await page.locator('#save-chart-save').click();
+      await page.locator('#save-chart-dialog').waitFor({ state: 'hidden' });
+      const kept = (await read(page)).charts.at(-1);
       assert.equal(kept.name, name);
-      assert.equal(kept.date, BIRTH.date);
-      assert.equal(kept.time, BIRTH.time);
-      assert.equal(kept.gender, BIRTH.gender);
-      assert.equal(kept.zi, 'split_midnight');
-      assert.equal(kept.place.city, HELSINKI.city);
-      // Saving again says what it replaces.
-      await page.locator('#save-partner-btn').click();
-      await page.locator('#partner-dialog').waitFor({ state: 'visible' });
-      assert.match(await page.locator('#partner-dialog-replaces').textContent(), /replaces/);
-      await page.locator('#partner-cancel').click();
-      await openSettings(page);
-      assert.equal(await page.locator('.settings-partner-name').textContent(), name);
+      assert.deepEqual([kept.date, kept.time, kept.gender, kept.zi, kept.place.city],
+        [BIRTH.date, BIRTH.time, BIRTH.gender, 'split_midnight', HELSINKI.city]);
+      await page.waitForFunction((name) => document.querySelector('#library-btn .library-label').textContent === name, name);
+      // Saved once: the library offers no second save, and marks the chart on screen.
+      await openLibrary(page);
+      assert.equal(await page.locator('#library-save').isHidden(), true);
+      assert.equal(await page.locator('#library-list [aria-current="true"] .saved-name').textContent(), name);
       assert.equal(await page.evaluate(() => window.__named), undefined, 'a name is text');
-      const pillars = await page.locator('.settings-pillar').evaluateAll((items) => items.map((item) => ({
-        chars: item.querySelector('.settings-pillar-chars').textContent,
-        pinyin: item.querySelector('.settings-pillar-pinyin').textContent,
-      })));
-      assert.deepEqual(pillars, ['hour', 'day', 'month', 'year'].map((p) => ({
-        chars: kept.pillars[p].stem.chinese + kept.pillars[p].branch.chinese,
-        pinyin: `${kept.pillars[p].stem.pinyin} ${kept.pillars[p].branch.pinyin}`,
-      })));
-      await page.locator('[data-settings-action="open"]').click();
+      await page.keyboard.press('Escape');
+      await page.locator('#library-dialog').waitFor({ state: 'hidden' });
+      assert.equal(await page.evaluate(() => document.activeElement?.id), 'library-btn');
+      await openSettings(page);
+      const card = page.locator(`#settings-charts-body .saved-card[data-chart="${kept.id}"]`);
+      assert.equal(await card.locator('.saved-name').textContent(), name);
+      // Its pillars, year first, each character with its pinyin.
+      const tiles = await card.locator('.saved-glyph').evaluateAll((items) => items.map((item) => [
+        item.querySelector('.saved-char').textContent, item.querySelector('.saved-pinyin').textContent,
+      ]));
+      assert.deepEqual(tiles, ['year', 'month', 'day', 'hour'].flatMap((p) => [
+        [kept.pillars[p].stem.chinese, kept.pillars[p].stem.pinyin],
+        [kept.pillars[p].branch.chinese, kept.pillars[p].branch.pinyin],
+      ]));
+      await card.locator('[data-settings-action="open"]').click();
       await page.locator('#chart-view').waitFor({ state: 'visible' });
       assert.equal(await page.evaluate(() => new URLSearchParams(location.hash.split('?')[1]).get('date')), BIRTH.date);
       await openSettings(page);
-      await page.locator('[data-settings-action="remove"]').focus();
+      // Removed from the keyboard, asked once more on the button itself.
+      await page.locator('#settings-charts-body [data-settings-action="remove"]').focus();
       await page.keyboard.press('Enter');
-      await page.waitForFunction(() => document.getElementById('settings-partner-body').textContent.includes('No partner’s chart'));
-      assert.equal((await read(page)).partner, null);
-      // The button that had focus is gone: its part's first control has it now.
-      assert.equal(await page.evaluate(() => document.activeElement?.dataset.settingsAction), 'new');
+      assert.match(await page.locator('#settings-charts-body [data-settings-action="remove"]').textContent(), /^Remove .*\?$/);
+      await page.keyboard.press('Enter');
+      await page.waitForFunction(() => document.getElementById('settings-charts-body').textContent.includes('No saved charts'));
+      assert.deepEqual((await read(page)).charts, []);
     });
 
-    check('a save refused for a partner saved meanwhile names that partner, and saved again replaces it', async (page) => {
+    check('a chart renamed in Settings keeps its birth, and the heading takes the name', async (page) => {
       await reset(page);
+      const id = await saveElsewhere(page, SCREEN);
+      await openSettings(page);
+      await page.locator(`#settings-charts-body [data-settings-action="rename"][data-chart="${id}"]`).click();
+      await page.locator(`#settings-rename-${id}`).fill('Renamed');
+      await page.keyboard.press('Enter');
+      await page.waitForFunction(() => document.getElementById('settings-charts-body').textContent.includes('Renamed'));
+      const kept = (await read(page)).charts.at(-1);
+      assert.deepEqual([kept.id, kept.name, kept.date, kept.time], [id, 'Renamed', BIRTH.date, BIRTH.time]);
+      assert.equal(await page.evaluate((id) => document.activeElement?.dataset.chart, id), id);
       await openLink(page, chartLink(), { place: HELSINKI });
-      await page.locator('#save-partner-btn').click();
-      await page.locator('#partner-dialog').waitFor({ state: 'visible' });
-      assert.equal(await page.locator('#partner-dialog-replaces').isHidden(), true);
-      await changeElsewhere(page, 'PUT', '/api/account/partner', {
-        name: 'Saved elsewhere', date: '1975-08-14', time: '07:45', place: PLACE, gender: 'female', zi: 'split_midnight',
-      });
-      await page.locator('#partner-save').click();
-      await page.waitForFunction(() => document.getElementById('partner-name-status').textContent !== '');
-      assert.match(await page.locator('#partner-name-status').textContent(), /changed elsewhere/);
-      assert.equal(await page.locator('#partner-dialog-replaces').isVisible(), true);
-      assert.match(await page.locator('#partner-dialog-replaces').textContent(), /Saved elsewhere/);
-      assert.equal((await read(page)).partner.name, 'Saved elsewhere', 'nothing was replaced');
-      await page.locator('#partner-save').click();
-      await page.locator('#partner-dialog').waitFor({ state: 'hidden' });
-      const kept = (await read(page)).partner;
-      assert.equal(kept.date, BIRTH.date);
-      assert.equal(kept.name, null);
+      await page.waitForFunction(() => document.querySelector('#library-btn .library-label').textContent === 'Renamed');
     });
 
-    check('a partner born in an hour the clocks repeat opens as its chart, at its pass, and keeps it', async (page) => {
+    check('my chart is marked, a partner is added as a new birth and paired at once, and the couple ends', async (page) => {
+      await reset(page);
+      await page.route('**/api/location_suggest', (route) => route.fulfill({ json: { suggestions: [HELSINKI] } }));
+      const mine = await saveElsewhere(page, SCREEN);
+      await openSettings(page);
+      await page.locator('#settings-mine-choice').selectOption(mine);
+      await page.locator('[data-settings-action="mark"]').click();
+      await page.waitForFunction(() => document.getElementById('settings-mine-body').textContent.includes('Your chart'));
+      assert.equal((await read(page)).my_chart, mine);
+      // A partner for my chart, as a new birth: the form, saying what it saves.
+      await page.locator('#settings-partner-of').selectOption(mine);
+      await page.locator('[data-settings-action="add-partner"]').click();
+      await page.locator('#save-note').waitFor({ state: 'visible' });
+      assert.match(await page.evaluate(() => location.hash), /^#save\?as=partner&with=/);
+      assert.match(await page.locator('#save-note-text').textContent(), /paired with Unnamed chart/);
+      await page.locator('#save-name').fill('New partner');
+      await page.locator('#date').fill('1988-11-02');
+      await page.locator('#time').fill('21:05');
+      await page.locator('#location').fill('Helsinki');
+      await page.locator('#location-suggestions .location-suggestion').click();
+      // Without a gender the form says so, and saves nothing.
+      await page.locator('#create-chart-btn').click();
+      await page.waitForFunction(() => document.getElementById('form-error').textContent.includes('gender'));
+      assert.equal((await read(page)).charts.length, 1);
+      await page.locator('.gender-option input[value="male"]').check();
+      await page.locator('#create-chart-btn').click();
+      await page.locator('#settings-view').waitFor({ state: 'visible' });
+      assert.equal(await page.evaluate(() => location.hash), '#settings');
+      const now = await read(page);
+      const partner = now.charts.find((chart) => chart.name === 'New partner');
+      assert.deepEqual(now.couples.map((couple) => couple.charts), [[mine, partner.id]]);
+      await page.waitForFunction(() => document.getElementById('settings-couples-body').textContent.includes('New partner'));
+      // Ended, both charts stay saved.
+      await page.locator('[data-settings-action="end"]').click();
+      await page.waitForFunction(() => document.getElementById('settings-couples-body').textContent.includes('No couples'));
+      const after = await read(page);
+      assert.deepEqual(after.couples, []);
+      assert.equal(after.charts.length, 2);
+    });
+
+    check('Cancel on a birth added from Settings saves nothing and goes back', async (page) => {
+      await reset(page);
+      await openSettings(page);
+      await page.locator('[data-settings-action="add-mine"]').click();
+      await page.locator('#save-note').waitFor({ state: 'visible' });
+      assert.match(await page.locator('#save-note-text').textContent(), /saved as your chart/);
+      await page.locator('#save-cancel').click();
+      await page.locator('#settings-view').waitFor({ state: 'visible' });
+      assert.equal(await page.evaluate(() => location.hash), '#settings');
+      assert.deepEqual((await read(page)).charts, []);
+      // The form, opened anew, is the plain form again.
+      await page.locator('#settings-close').click();
+      await page.locator('#input-view').waitFor({ state: 'visible' });
+      assert.equal(await page.locator('#save-note').isHidden(), true);
+      assert.equal(await page.locator('#save-name-group').isHidden(), true);
+      assert.equal(await page.locator('#create-chart-btn').textContent(), 'Create chart');
+    });
+
+    check('a chart born in an hour the clocks repeat opens as its chart, at its pass, and is named', async (page) => {
       await reset(page);
       // 25 October 2020 in Helsinki: the clocks went back at 04:00, so 03:30 came twice.
-      const REPEATED = { date: '2020-10-25', time: '03:30', place: PLACE, fold: 1, gender: 'female', zi: 'split_midnight' };
-      await changeElsewhere(page, 'PUT', '/api/account/partner', REPEATED);
+      const REPEATED = { name: 'Repeated', date: '2020-10-25', time: '03:30', place: PLACE, fold: 1, gender: 'female', zi: 'split_midnight' };
+      await saveElsewhere(page, REPEATED);
       await openSettings(page);
       const asked = [];
       page.on('request', (request) => {
         if (new URL(request.url()).pathname === '/api/four_pillars') asked.push(request.postDataJSON());
       });
-      await page.locator('[data-settings-action="open"]').click();
+      await page.locator('#settings-charts-body [data-settings-action="open"]').click();
       await page.locator('#chart-view').waitFor({ state: 'visible' });
       await page.waitForFunction(() => !document.getElementById('chart-view').hasAttribute('aria-busy'));
       assert.equal(await page.evaluate(() => new URLSearchParams(location.hash.split('?')[1]).get('fold')), '1');
       assert.equal(asked.at(-1).location.fold, 1);
       assert.equal(await page.locator('#form-error').isHidden(), true);
-      // Saved as the partner's chart again, it keeps its pass.
-      await page.locator('#save-partner-btn').click();
-      await page.locator('#partner-dialog').waitFor({ state: 'visible' });
-      await page.locator('#partner-save').click();
-      await page.locator('#partner-dialog').waitFor({ state: 'hidden' });
-      assert.equal((await read(page)).partner.fold, 1);
+      // The library knows it by its pass.
+      await page.waitForFunction(() => document.querySelector('#library-btn .library-label').textContent === 'Repeated');
       // And the explorer is asked for the same pass.
       const explored = page.waitForRequest('**/api/evolution_explorer');
       await page.locator('#view-switch button[data-view="evolution"]').click();
       assert.equal((await explored).postDataJSON().location.fold, 1);
     });
 
-    check('a chart without a gender is not saved as a partner, and says why', async (page) => {
+    check('a chart without a gender is not saved, and says why', async (page) => {
       await reset(page);
       await openLink(page, chartLink({ gender: '' }).replace('&gender=', ''), { place: HELSINKI });
-      await page.locator('#save-partner-btn').click();
+      await openLibrary(page);
+      await page.locator('#library-save').click();
       await page.waitForFunction(() => document.querySelector('.toast').classList.contains('is-shown'));
       assert.match(await page.locator('.toast').textContent(), /gender/);
-      assert.equal(await page.locator('#partner-dialog').isHidden(), true);
-      assert.equal((await read(page)).partner, null);
+      assert.equal(await page.locator('#save-chart-dialog').isHidden(), true);
+      assert.deepEqual((await read(page)).charts, []);
     });
   });
 }
 
 describe(`${engineName} / settings signed out`, { concurrency: false }, () => {
+  it('signed in, the bare address opens my chart, replacing the address; a chart link opens itself', { timeout: 120000 }, () => withPage(profiles[0], async (page) => {
+    const own = await newAccount(playwright, { language: 'en', label: 'settings-mine' });
+    await asAccount(playwright, own, async (request) => {
+      const kept = await request.post('/api/account/charts', { data: { ...SCREEN, name: 'Mine', mine: true, key: own.key, updated_at: null } });
+      assert.equal(kept.status(), 201, await kept.text());
+    });
+    await signInPage(page, own);
+    await page.goto(new URL('/', process.env.EC_BASE_URL).href);
+    await page.locator('#chart-view').waitFor({ state: 'visible' });
+    assert.equal(await page.evaluate(() => new URLSearchParams(location.hash.split('?')[1]).get('date')), BIRTH.date);
+    await page.waitForFunction(() => document.querySelector('#library-btn .library-label').textContent === 'Mine');
+    // A chart link opens its own chart; New chart still opens the form.
+    await page.goto(new URL(chartLink({ date: '1977-02-03' }), process.env.EC_BASE_URL).href);
+    // The chart on screen was already shown: the link's own is drawn once its heading
+    // names it.
+    await page.waitForFunction(() => document.getElementById('chart-date').textContent.includes('1977'));
+    await settled(page);
+    assert.equal(await page.evaluate(() => new URLSearchParams(location.hash.split('?')[1]).get('date')), '1977-02-03');
+    await page.waitForFunction(() => document.querySelector('#library-btn .library-label').textContent === 'Unsaved chart');
+    await page.locator('#new-chart-btn').click();
+    await page.locator('#input-view').waitFor({ state: 'visible' });
+    assert.equal(await page.evaluate(() => location.hash), '');
+  }, { signedIn: false }));
+
   it('Settings asks for a sign-in first', { timeout: 60000 }, () => withPage(profiles[0], async (page) => {
     await stubTurnstile(page);
     await page.goto(new URL('/#settings', process.env.EC_BASE_URL).href);
