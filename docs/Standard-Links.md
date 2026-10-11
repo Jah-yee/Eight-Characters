@@ -23,9 +23,9 @@ The chart lives in the address's fragment, the part after `#`:
 - `zi`, only when it is not the engine's default: the Zi-hour convention,
   `whole_zi_23`.
 - `fold`, only for a time the place's clocks repeat: `0` for its first pass, `1` for
-  its second. The form makes no such link; a saved birth that names its pass, such as a
-  partner's chart opened from [Settings](Standard-Settings.md), does, and the chart
-  keeps it for Save as partner and the Evolution explorer.
+  its second. The form makes no such link; a saved birth that names its pass, opened
+  from the library or [Settings](Standard-Settings.md), does, and the chart keeps it for
+  the library and the Evolution explorer.
 - `display`, only when it is not Characters: `ten-gods` or `hidden-stems`.
 - `luck`, only while a luck pillar stands in the chart: `before`, or
   `<decade>/<stem|branch>` such as `5/stem` (see

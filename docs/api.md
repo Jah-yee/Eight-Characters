@@ -471,7 +471,7 @@ and the rest of the passage cut):
       {"part": "cycle", "first": "Emperor's Peak · Bathing · Birth"}
     ]
   },
-  "engine": {"version": "0.49.1", "…": "…"}
+  "engine": {"version": "0.50.0", "…": "…"}
 }
 ```
 
@@ -587,14 +587,16 @@ Everything Today shows for a date, for the chart the page is on. The body:
 
 - `date` (`YYYY-MM-DD`, a date at where you are) and `lang` (`fi` or `en`);
 - `charts`: `self`, the chart the page is on, and optionally `partner`, each a birth
-  as `PUT /api/account/partner` takes one, without `key`;
+  as `POST /api/account/charts` takes one, without `key` (the API takes births, never
+  saved charts' ids);
 - `place`, where you are (`{name, city, timezone, latitude, longitude}`);
 - `chart`: `self`, the default, or `partner`, to read the partner's chart with the
   other as the partner's;
 - `schools`: any of the three presets; the others follow their defaults.
 
-The page sends the partner's chart, the place and the schools the account keeps
-(`GET /api/account/settings`), with the chart it is on. The answer is sent with
+The page sends the chart it is on and, when that chart is a saved chart in a couple,
+the other chart of the couple, with the place and the schools the account keeps
+(`GET /api/account/settings`). The answer is sent with
 `Cache-Control: private, no-cache`.
 
 - `400` for a malformed date, or one whose run (7 days back, 14 ahead) leaves the

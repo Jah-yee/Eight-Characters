@@ -1,7 +1,7 @@
 # The chart's day: Today in Standard mode
 
 Today shows what a day, its month, its year and the luck pillar in force bring to the
-chart on screen, and to a partner's. The API reckons all of it (`POST /api/today`, by
+chart on screen, and to its partner's when it is in a couple. The API reckons all of it (`POST /api/today`, by
 [Today: the rules](Today.md)); the page draws its answer and computes nothing. The one
 thing the page reads itself is the date on the clock at where you are.
 
@@ -12,17 +12,18 @@ The chart needs a gender, since the day reads its luck pillars. Today is not off
 a comparison's frames, and the Evolution explorer, a page of its own, has none.
 
 The day asks for what the account keeps in [Settings](Standard-Settings.md): where you
-are, a partner's chart and the schools. Without a place, Today says so and leads to
+are, the schools and, when the chart on screen is a saved chart in a couple, the other
+chart of the couple. Without a place, Today says so and leads to
 Settings; without a gender, back to the chart.
 
 ## The page
 
 - **The bar:** the date, the chart and where you are; Chart · Today; the day before,
-  Today (where you are) and the day after; whose day, with a partner's chart saved;
+  Today (where you are) and the day after; whose day, when the chart is in a couple;
   FI · EN; Copy link; Copy as text; Print; Settings. Below 640px the actions show as
   their icons.
 - **The pull line:** the day's band and score.
-- **The topics:** the day's page, Marriage (with a partner's chart), Work and Health,
+- **The topics:** the day's page, Marriage (in a couple), Work and Health,
   each in the panel.
 - **The run:** 22 days, 7 back and 14 ahead, each with its pillar, its pinyin, its score
   and its band as a mark. A band's mark says it by shape: a filled circle, a ring, a dash,
@@ -45,12 +46,14 @@ not the body: it is not health advice.
 
 ## A partner's day
 
-With a partner's chart saved, the bar names it beside This chart. The partner's day
-turns the whole page to the partner's chart, counted at where you are, and the page
-says so. Marriage reads both: each pull, whether the day pulls you apart, the day at the
-spouse palace, and the day's relationships with the other chart. If the partner's chart
-is removed elsewhere, or no longer charts, the partner's day says so and offers the
-chart's own.
+When the chart on screen is a saved chart in a couple, the bar names its partner beside
+This chart. The partner's day turns the whole page to the partner's chart, counted at
+where you are, and the page says so; opening the partner's chart itself reads the same
+couple from its side. Marriage reads both: each pull, whether the day pulls you apart,
+the day at the spouse palace, and the day's relationships with the other chart. A chart
+that is not saved, or not in a couple, has no partner side. If the couple ends
+elsewhere, or the partner's chart no longer charts, the partner's day says so and
+offers the chart's own.
 
 ## Its address
 
@@ -61,7 +64,7 @@ chart's own.
 - `topic`: `day`, `marriage`, `work`, `health`, or `pillar/day`, `pillar/month`,
   `pillar/year`, `pillar/luck`.
 
-A link names the chart and the day. The partner and where you are come from the
+A link names the chart and the day. The couple and where you are come from the
 account that opens it, and a link opened signed out asks for a sign-in first. A link
 with an unknown, repeated or invalid part says so, naming the part, as a chart link
 does. A day the API cannot read (outside the engine's years, with the run's days) is
@@ -75,8 +78,8 @@ The chart, from Today's bar or its commands, opens in the language the day is sh
 A link opened signed out asks for a sign-in, and the day is then shown in the account's
 language, which its address then names; a session that ends while the day is open asks
 for a sign-in when the day is next asked for. A sign-out leaves nothing of the account's
-day on the page: neither where you are nor a partner's name. Marriage, open when the partner's chart is
-removed elsewhere (or no longer charts), closes, and the page says why.
+day on the page: neither where you are nor a partner's name. Marriage, open when the couple ends
+elsewhere (or the partner's chart no longer charts), closes, and the page says why.
 
 ## Keys and commands
 

@@ -711,23 +711,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // A birth from Settings is kept, and Settings shown again.
     if (saving !== null) {
+      const mode = saving;
       setPending(true);
       let problem;
       try {
-        problem = await saveBirth(request, resolvedLocation);
+        problem = await saveBirth(mode, request, resolvedLocation);
       } catch (err) {
         console.error(err);
         problem = err.message || t('settings_load_error');
       } finally {
         setPending(false);
       }
+      const done = requiredTranslation(mode.as === 'correct' ? 'save_corrected' : 'save_chart_saved');
+      // Cancelled, or left, while the save was on its way: kept all the same, it is said,
+      // and the page stays where it went.
+      if (saving !== mode) {
+        if (problem === null) showToast(done, false);
+        return;
+      }
       if (problem === null) {
-        showToast(requiredTranslation(saving.as === 'correct' ? 'save_corrected' : 'save_chart_saved'), false);
+        showToast(done, false);
         backToSettings('replaceState');
       } else {
         setFormError(problem);
         // Refused, the settings may have been read again: the next save is made from them.
-        if (saving !== null) saving = { ...saving, basis: settingsPage.basis() };
+        saving = { ...mode, basis: settingsPage.basis() };
       }
       return;
     }
@@ -1769,26 +1777,23 @@ document.addEventListener('DOMContentLoaded', () => {
     if (event.target.closest('button[data-page="today"]')) openToday();
   });
 
-  // The birth on screen, as the library tells births apart (library.js), or null when
-  // no chart is drawn.
-  const screenBirth = () => {
-    if (shown === null) return null;
-    const { request, place } = shown;
-    return {
-      date: request.date,
-      time: request.time,
-      place: {
-        name: place.display,
-        city: place.city,
-        timezone: request.location.timezone,
-        latitude: request.location.latitude,
-        longitude: request.location.longitude,
-      },
-      fold: request.location.fold ?? null,
-      gender: request.gender ?? null,
-      zi: request.conventions?.zi_convention ?? ZI_CONVENTIONS[0],
-    };
-  };
+  // A drawn chart's birth, as the library tells births apart (library.js).
+  const birthOfChart = ({ request, place }) => ({
+    date: request.date,
+    time: request.time,
+    place: {
+      name: place.display,
+      city: place.city,
+      timezone: request.location.timezone,
+      latitude: request.location.latitude,
+      longitude: request.location.longitude,
+    },
+    fold: request.location.fold ?? null,
+    gender: request.gender ?? null,
+    zi: request.conventions?.zi_convention ?? ZI_CONVENTIONS[0],
+  });
+  // The birth on screen, or null when no chart is drawn.
+  const screenBirth = () => (shown === null ? null : birthOfChart(shown));
 
   // Save the chart on screen: kept in the library (settings.js), with a name if one is
   // given. The day needs the luck pillars, and so a gender.
@@ -1853,7 +1858,8 @@ document.addEventListener('DOMContentLoaded', () => {
       saveChartName.focus();
       return;
     }
-    const birth = { ...screenBirth(), ...(name ? { name } : {}) };
+    // The chart the dialog named when it opened, whatever is on screen now.
+    const birth = { ...birthOfChart(chartToSave), ...(name ? { name } : {}) };
     let problem;
     try {
       problem = await settingsPage.saveChart(birth, {}, chartBasis);
@@ -1974,7 +1980,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
   saveCancel.addEventListener('click', () => backToSettings('replaceState'));
   // The form's birth, kept as the mode says: null once kept, or why not.
-  const saveBirth = async (request, place) => {
+  const saveBirth = async (mode, request, place) => {
     const name = saveNameInput.value.trim();
     const problemWithName = nameProblem(name);
     if (problemWithName !== null) {
@@ -1985,7 +1991,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!request.gender) return requiredTranslation('save_chart_needs_gender');
     // A corrected birth keeps its Zi-hour convention, and its pass while its day and
     // time stay as they were.
-    const sameMoment = saving.as === 'correct' && saving.fold !== null;
+    const sameMoment = mode.as === 'correct' && mode.fold !== null;
     const birth = {
       ...(name ? { name } : {}),
       date: request.date,
@@ -1999,14 +2005,14 @@ document.addEventListener('DOMContentLoaded', () => {
       },
       fold: null,
       gender: request.gender,
-      zi: saving.zi,
+      zi: mode.zi,
     };
     if (sameMoment) {
-      const before = window.EC_LIBRARY.chartWith(settingsPage.current(), saving.chart);
-      if (before !== null && before.date === birth.date && before.time === birth.time) birth.fold = saving.fold;
+      const before = window.EC_LIBRARY.chartWith(settingsPage.current(), mode.chart);
+      if (before !== null && before.date === birth.date && before.time === birth.time) birth.fold = mode.fold;
     }
-    if (saving.as === 'correct') return settingsPage.correctChart(saving.chart, birth, saving.basis);
-    return settingsPage.saveChart(birth, { mine: saving.as === 'mine', coupleWith: saving.with }, saving.basis);
+    if (mode.as === 'correct') return settingsPage.correctChart(mode.chart, birth, mode.basis);
+    return settingsPage.saveChart(birth, { mine: mode.as === 'mine', coupleWith: mode.with }, mode.basis);
   };
 
   // Signed in, the bare address opens your chart; with none marked, the form stays.

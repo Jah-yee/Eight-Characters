@@ -38,21 +38,40 @@ in with a code sent by email. Charts need an account; the start page does not.
 
 A record's file is canonical JSON (UTF-8, keys sorted, two-space indents, a final
 newline) with `"schema"` and `"kind"`. A file that decodes to a valid record but is
-not exactly those bytes is refused. The app writes schema 2. Schema 1 records, from
+not exactly those bytes is refused. The app writes schema 3. Schema 1 records, from
 before accounts kept settings, have no `settings` field and read as accounts without
-any, so a backup made before still restores.
+any; schema 2 records hold settings with a partner's chart (below). Both still
+restore.
 
-An account's settings for Today are part of its record: `partner` (a partner's
-chart, a birth or `null`; Today is about the chart the page is on, so none of the
-account's own is kept), `place` (where the person is: `name`, `city`, `timezone`,
-`latitude`, `longitude`, or `null`), `schools` (`favourable`, `season`, `transits`:
-a preset, or `null` to follow the default) and `updated_at`. A birth holds `name`
-(`null` or 1 to 80 printable characters), `date`, `time`, `place`, `fold` (`0`, `1` or
-`null`), `gender` (`male`/`female`) and `zi` (`split_midnight`/`whole_zi_23`), and is
-checked by the first chart's rules. Coordinates are written as numbers with a decimal
-point. The database keeps the settings as the same canonical JSON (migration 4,
-`settings`, deleted with the account), and a change to them is logged as the user's,
-so the backup copies the account's record again.
+An account's settings are part of its record:
+- `charts`: the saved charts, in the order saved, at most 50. Each is an `id` (32
+  random hex digits) and a `birth`, which holds `name` (`null` or 1 to 80 printable
+  characters), `date`, `time`, `place`, `fold` (`0`, `1` or `null`), `gender`
+  (`male`/`female`) and `zi` (`split_midnight`/`whole_zi_23`), checked by the first
+  chart's rules. A birth is saved once: two births with the same day, time to the
+  second, fold, timezone, coordinates, gender and Zi convention are one chart.
+- `my_chart`: the person's own chart, a saved chart's id, or `null`.
+- `couples`: each an `id` and `charts`, two different saved charts' ids in the order
+  paired. A chart is in one couple at most.
+- `pending_partner`: the chart kept from a schema 2 partner, waiting to pair with the
+  first chart marked as the person's own, or `null`.
+- `place` (where the person is: `name`, `city`, `timezone`, `latitude`, `longitude`,
+  or `null`), `schools` (`favourable`, `season`, `transits`: a preset, or `null` to
+  follow the default) and `updated_at`.
+
+Coordinates are written as numbers with a decimal point. The database keeps the
+settings as the same canonical JSON (migration 4, `settings`, deleted with the
+account), and a change to them is logged as the user's, so the backup copies the
+account's record again.
+
+Settings written before accounts kept charts hold `partner` (a birth or `null`) in
+place of `charts`, `my_chart`, `couples` and `pending_partner`. They are read as they
+are, each checked as its own shape's canonical bytes: the partner is a saved chart
+under an id derived from its birth (the first 32 hex digits of the SHA-256 of
+`partner\n` and its canonical JSON), so every read and every restore of a schema 2
+backup gives the same id, and it waits as `pending_partner`. The account's next change
+writes the new shape. Rolling the app back after that needs a restore from the
+backup.
 
 Every change to a backed-up record is logged in the `changes` table in the same
 transaction. Sessions, sign-in codes and the record of codes asked for are kept in the
@@ -105,15 +124,23 @@ so the database alone cannot be used to test guesses or take over a session.
 | `DELETE /api/account/sessions` | signs the account out everywhere; `{"key": …}` names it | `204`; `400`, `401`, `409` |
 | `POST /api/account/export` | everything kept for the account (`{"key": …}` names it), as `bazi-account.json`: its record, its sessions and a pending sign-in code (when made and when they end, without hashes), and the codes asked for in the last hour with the client addresses they came from | `200`; `400`, `401`, `409` |
 | `DELETE /api/account` | deletes the account, its sessions and its sign-in code; `{"email": …, "key": …}`: `key` names it, and `email` repeats its address. The codes asked for stay until an hour old, so the hourly limits hold | `204`; `400`, `401`, `409` |
-| `GET /api/account/settings` | your partner's chart (with its four pillars, or `pillars: null` and the reason in `problem` if the engine no longer charts it), where you are, the schools Today follows and the ones chosen (`null`: the default), `updated_at` (`null` before anything is set) and the account's `key` | `200`; `401` |
-| `PUT /api/account/partner` | keeps a birth as your partner's chart: `{key, updated_at, name?, date, time, place: {name, city, timezone, latitude, longitude}, fold?, gender, zi?}`, checked by the first chart's rules and charted first | `200` and the settings; `400` (a malformed birth, a time the clocks skipped, or repeated without `fold`), `401`, `403`, `409`, `412` |
-| `DELETE /api/account/partner` | removes your partner's chart; `{"key": …, "updated_at": …}` | `200` and the settings; `400`, `401`, `403`, `409`, `412` |
+| `GET /api/account/settings` | your saved charts (each with its `id` and its four pillars, or `pillars: null` and the reason in `problem` if the engine no longer charts it), `my_chart`, `couples`, `pending_partner`, where you are, the schools Today follows and the ones chosen (`null`: the default), `updated_at` (`null` before anything is set) and the account's `key` | `200`; `401` |
+| `POST /api/account/charts` | saves a birth: `{key, updated_at, name?, date, time, place: {name, city, timezone, latitude, longitude}, fold?, gender, zi?, mine?, couple_with?}`, checked by the first chart's rules and charted first. `mine` marks it as your own and `couple_with` (a saved chart's id) pairs it, in the same write | `201`, the settings and `saved` (the new id); `400` (a malformed birth, a time the clocks skipped or repeated without `fold`, a full library, a birth saved already, a partner already in a couple), `401`, `403`, `404` (no such partner), `409`, `412` |
+| `PUT /api/account/charts/{id}` | corrects a saved chart's birth, charted first; it keeps its id, its mark and its couple | `200` and the settings; `400`, `401`, `403`, `404`, `409`, `412` |
+| `PUT /api/account/charts/{id}/name` | renames a saved chart (`{key, updated_at, name}`, `null` for none) without charting it again | `200` and the settings; `400`, `401`, `403`, `404`, `409`, `412` |
+| `DELETE /api/account/charts/{id}` | removes a saved chart, ends its couple, and unmarks it | `200` and the settings; `400`, `401`, `403`, `404`, `409`, `412` |
+| `PUT /api/account/my-chart` | marks a saved chart as your own: `{key, updated_at, chart}`; a waiting partner pairs with it unless either is in a couple | `200` and the settings; `400`, `401`, `403`, `404`, `409`, `412` |
+| `DELETE /api/account/my-chart` | no chart is your own any more | `200` and the settings; `400`, `401`, `403`, `409`, `412` |
+| `POST /api/account/couples` | pairs two saved charts: `{key, updated_at, charts: [id, id]}` | `201` and the settings; `400` (one chart twice, a chart already in a couple), `401`, `403`, `404`, `409`, `412` |
+| `DELETE /api/account/couples/{id}` | ends a couple; both charts stay saved | `200` and the settings; `400`, `401`, `403`, `404`, `409`, `412` |
 | `PUT /api/account/place` | where you are: `{key, updated_at, place}` | `200` and the settings; `400`, `401`, `403`, `409`, `412` |
 | `DELETE /api/account/place` | forgets where you are; `{"key": …, "updated_at": …}` | `200` and the settings; `400`, `401`, `403`, `409`, `412` |
 | `PATCH /api/account/schools` | chooses any of `favourable`, `season`, `transits` (`GET /api/schools`), or `null` to follow the default again; those left out stay. `{key, updated_at, …}` | `200` and the settings; `400` an unknown preset or setting, `401`, `403`, `409`, `412` |
 
 Every request that changes something must carry the site's own `Origin`, or it is
-refused with `403`.
+refused with `403`. An id that is not 32 lowercase hex digits answers `400`; the
+library's refusals answer `400` too, since the page reads a `409` as another account
+signed in. Every `/api/account` answer says `Cache-Control: no-store`.
 
 A change to the settings names the settings it was made from by their `updated_at`, as
 `GET /api/account/settings` gave it (`null` for an account that has set nothing). If
