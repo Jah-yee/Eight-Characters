@@ -386,12 +386,15 @@
         latitude: saving.latitude,
         longitude: saving.longitude,
       };
-      // Saved, the search is cleared, unless another place was picked or typed meanwhile.
+      // Saved, the search is cleared, unless another place was picked or typed meanwhile;
+      // Save, then unavailable, hands its focus to the search.
       if (await change('PUT', '/api/account/place', { place }, t('settings_place_saved')) && picked === saving) {
+        const focused = document.activeElement === placeSave;
         picked = null;
         placeInput.value = '';
         placeSave.disabled = true;
         setPlaceStatus('');
+        if (focused) placeInput.focus();
       }
     });
     placeRemove.addEventListener('click', async () => {
@@ -433,7 +436,8 @@
 
     // Drawing replaces the controls: the one that had focus hands it to its counterpart
     // (the same preset or action), or, gone, to the first control of its part, so the
-    // keyboard stays where it was.
+    // keyboard stays where it was. A control hidden or disabled has lost focus too.
+    const focusable = (node) => node.isConnected && !node.closest('.hidden') && !node.disabled;
     const draw = () => {
       if (settings === null) return;
       const focused = view.contains(document.activeElement) ? document.activeElement : null;
@@ -444,29 +448,39 @@
       drawPartner();
       drawPlace();
       if (catalog !== null) drawSchools();
-      if (focused === null || focused.isConnected) return;
-      const next = (counterpart === null ? null : view.querySelector(counterpart)) ?? part?.querySelector('button, input');
-      next?.focus();
+      if (focused === null || focusable(focused)) return;
+      const found = counterpart === null ? null : view.querySelector(counterpart);
+      const next = found !== null && focusable(found) ? found : [...(part?.querySelectorAll('button, input') ?? [])].find(focusable);
+      // The place's Remove, gone with the place, hands focus to the place's search.
+      (next ?? placeInput).focus();
     };
 
     // Shows the settings, read anew: whatever another tab changed meanwhile is shown.
+    // Each showing is numbered: only the latest draws or says anything, so one that ends
+    // late changes nothing of a later one, its failure included.
+    let showing = 0;
     const show = async () => {
+      const mine = ++showing;
       say('');
       view.classList.remove('hidden');
       view.setAttribute('aria-busy', 'true');
       try {
-        await Promise.all([load(() => !view.classList.contains('hidden')), loadCatalog()]);
+        await Promise.all([load(() => mine === showing), loadCatalog()]);
+        if (mine !== showing) return;
         draw();
         say('');
       } catch (err) {
+        if (mine !== showing) return;
         console.error(err);
         say(err.message || t('settings_load_error'), true);
       } finally {
-        view.removeAttribute('aria-busy');
+        if (mine === showing) view.removeAttribute('aria-busy');
       }
     };
     const hide = () => {
+      showing += 1;
       view.classList.add('hidden');
+      view.removeAttribute('aria-busy');
       closeList();
     };
     closeButton.addEventListener('click', () => onClose());

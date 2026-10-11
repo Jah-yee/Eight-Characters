@@ -85,16 +85,56 @@ for (const profile of profiles) {
       await page.locator('#settings-location').fill('Helsinki');
       await page.locator('#settings-location-suggestions .location-suggestion').click();
       assert.equal(await page.locator('#settings-place-save').isDisabled(), false);
-      await page.locator('#settings-place-save').click();
+      // Saved and removed from the keyboard: each button, then unavailable, hands its
+      // focus to the search.
+      await page.locator('#settings-place-save').focus();
+      await page.keyboard.press('Enter');
       await page.waitForFunction(() => document.getElementById('settings-place-now').textContent.startsWith('Now:'));
       assert.deepEqual((await read(page)).place, {
         name: HELSINKI.display, city: HELSINKI.city, timezone: HELSINKI.timezone,
         latitude: HELSINKI.latitude, longitude: HELSINKI.longitude,
       });
-      await page.locator('#settings-place-remove').click();
+      await page.waitForFunction(() => document.activeElement?.id === 'settings-location');
+      await page.locator('#settings-place-remove').focus();
+      await page.keyboard.press('Enter');
       await page.waitForFunction(() => document.getElementById('settings-place-now').textContent.startsWith('No place'));
       assert.equal((await read(page)).place, null);
       assert.equal(await page.locator('#settings-place-remove').isHidden(), true);
+      assert.equal(await page.evaluate(() => document.activeElement?.id), 'settings-location');
+    });
+
+    check('a showing that ends late changes nothing of a later one, its failure included', async (page) => {
+      await reset(page);
+      // The first showing's list of schools is held on its way.
+      let release;
+      const held = new Promise((resolve) => { release = resolve; });
+      let holding = true;
+      const lists = [];
+      page.on('response', (response) => {
+        if (new URL(response.url()).pathname === '/api/schools') lists.push(response.status());
+      });
+      await page.route('**/api/schools', async (route) => {
+        if (holding) {
+          holding = false;
+          await held;
+        }
+        await route.fallback();
+      });
+      await page.goto(new URL('/#settings', process.env.EC_BASE_URL).href);
+      await page.locator('#settings-view').waitFor({ state: 'visible' });
+      // Closed, and opened again from the account menu, now unable to read the settings.
+      await page.locator('#settings-close').click();
+      await page.route('**/api/account/settings', (route) => route.fulfill({ status: 500, json: { detail: 'Stopped by the test.' } }));
+      await page.locator('#account-btn').click();
+      await page.locator('#account-settings').click();
+      await page.locator('#settings-status').waitFor({ state: 'visible' });
+      release();
+      for (let tries = 0; lists.length < 2 && tries < 100; tries += 1) await page.waitForTimeout(50);
+      assert.equal(lists.length, 2, 'the first showing has its answer');
+      await page.evaluate(() => new Promise((resolve) => { setTimeout(resolve, 0); }));
+      assert.equal(await page.locator('#settings-status').textContent(), 'Stopped by the test.');
+      assert.equal(await page.locator('#settings-schools-body input').count(), 0);
+      assert.equal(await page.locator('#settings-view').getAttribute('aria-busy'), null);
     });
 
     check('a place picked while the one before is saved stays picked', async (page) => {

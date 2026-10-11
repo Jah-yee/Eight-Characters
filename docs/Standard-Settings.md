@@ -9,7 +9,8 @@ comes from the API (`GET /api/account/settings`, `GET /api/schools`).
 
 **Settings**, in the account menu, in Today's bar and among the commands, opens
 `#settings`. Signed out, it asks for a sign-in first. Close goes back to the page they
-were opened from. Settings are not offered in a comparison's frames.
+were opened from. Settings are not offered in a comparison's frames. Each opening reads
+the settings anew, and only the latest one draws them or says why it could not.
 
 ## Your partner's chart
 
@@ -30,7 +31,8 @@ link, with its pass of an hour the clocks repeat where the saved birth names one
 A place search of its own, as the birth form's: choose a place from the list and save
 it. The hours of a day are reckoned for it. Remove forgets it. Nothing is guessed from
 the browser. A place picked while the one before is being saved stays in the search,
-to be saved in turn.
+to be saved in turn. Saved or removed from the keyboard, the place leaves the focus in
+the search.
 
 ## The schools
 
