@@ -431,6 +431,10 @@ class Settings:
             raise RecordError('The same two charts form two couples.')
         if any(not set(couple.charts) <= set(ids) for couple in self.couples):
             raise RecordError('A couple names a chart the account does not keep.')
+        paired = [chart for couple in self.couples for chart in couple.charts]
+        if len(set(paired)) != len(paired):
+            # On every plan for now; a plan that allows more lifts this check alone.
+            raise RecordError('A chart is in one couple at most.')
         if self.pending_partner is not None and (
             self.pending_partner not in ids or self.my_chart is not None
         ):

@@ -245,6 +245,14 @@ class TestSettingsRecords(unittest.TestCase):
                     Couple('5' * 32, (PARTNER_ID, MINE_ID)),
                 ),
             ),
+            'a chart in two couples': lambda: replace(
+                SETTINGS,
+                charts=(*SETTINGS.charts, SavedChart('4' * 32, born(1))),
+                couples=(
+                    Couple(COUPLE_ID, (MINE_ID, PARTNER_ID)),
+                    Couple('5' * 32, (MINE_ID, '4' * 32)),
+                ),
+            ),
             'a waiting partner beside my chart': lambda: replace(
                 SETTINGS, pending_partner=PARTNER_ID
             ),
