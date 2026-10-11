@@ -770,6 +770,9 @@
     const show = async (next) => {
       if (!DAY_PATH.test(next.day) || (next.topic !== null && !TOPIC_PATH.test(next.topic))) throw new Error(t('today_answer_error'));
       const before = state?.day ?? null;
+      // A drag under way began on the day shown: another day shown (by a key or a pick)
+      // cancels it, so the old gesture never moves the new day.
+      if (before !== next.day) cancelDrag();
       state = next;
       answer = null;
       // The run drawn stands for its own reading alone: for another chart, language or

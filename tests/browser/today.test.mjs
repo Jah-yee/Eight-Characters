@@ -803,6 +803,19 @@ for (const profile of profiles) {
       await page.waitForTimeout(100);
       assert.equal(await part(page, 'day'), DAY);
       assert.equal(answers.length, asked + 1, 'the drag asked for nothing');
+      // A key steps the day while a drag is under way: the drag, begun on the day before,
+      // moves nothing more.
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      for (const step of [20, 60, 120]) await page.mouse.move(x - step, y + 3);
+      assert.equal(await page.locator('#today-days').getAttribute('class'), 'today-days is-dragging');
+      await page.keyboard.press(']');
+      await page.waitForFunction(() => new URLSearchParams(location.hash.split('?')[1]).get('day') === '2026-10-12');
+      await page.mouse.move(x - 1.4 * box.width, y + 3);
+      await page.mouse.up();
+      await page.waitForFunction(() => !document.getElementById('today-view').hasAttribute('aria-busy'));
+      await page.waitForTimeout(100);
+      assert.equal(await part(page, 'day'), '2026-10-12');
     });
 
     check('a drag while the day shown is past the run drawn steps by the days it went, in calendar days', async (page) => {
