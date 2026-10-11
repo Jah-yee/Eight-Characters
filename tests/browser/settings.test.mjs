@@ -703,6 +703,17 @@ for (const profile of profiles) {
       assert.equal(asked.at(-1).conventions?.zi_convention, 'whole_zi_23');
       assert.equal(await dayStem(), before);
       assert.equal(await page.evaluate(() => new URLSearchParams(location.hash.split('?')[1]).get('zi')), 'whole_zi_23');
+      // Back to the chart after New chart, which emptied the form: the chart on screen is
+      // the one come back to, asked for nothing, and the form is filled with it again.
+      await page.locator('#new-chart-btn').click();
+      await page.locator('#input-view').waitFor({ state: 'visible' });
+      const askedBefore = asked.length;
+      await page.goBack();
+      await drawn();
+      assert.equal(asked.length, askedBefore, 'the chart come back to is not asked for again');
+      await remade();
+      assert.equal(asked.at(-1).conventions?.zi_convention, 'whole_zi_23');
+      assert.equal(await dayStem(), before);
       // 25 October 2020 in Helsinki: the clocks went back at 04:00, so 03:30 came twice.
       await openLink(page, chartLink({ date: '2020-10-25', time: '03:30', fold: '1' }), { place: HELSINKI });
       await remade();

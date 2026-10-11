@@ -519,7 +519,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // convention) and named in the address.
   let shown = null;
   // The request of the chart whose birth the form holds: the form is filled with each
-  // chart drawn, and holds none once it is reset. A chart made from it again (Edit,
+  // chart shown, and holds none once it is reset. A chart made from it again (Edit,
   // then Create chart) keeps that chart's Zi-hour convention, and its pass of a
   // repeated hour while its day, time and zone stay as they were.
   let formChart = null;
@@ -678,15 +678,16 @@ document.addEventListener('DOMContentLoaded', () => {
       [heading, solarTime.solar, requiredTranslation(`zi_${zi}`)].join(' · '),
     ].join('\n');
     shown = { request, place, heading, text };
-    formChart = request;
     revealChart();
     return true;
   };
-  // Open charts are told apart by their tab.
+  // Open charts are told apart by their tab. The form holds the chart's birth now, drawn
+  // anew or come back to (Back to a chart after New chart, say).
   const revealChart = () => {
     document.title = t('chart_page_title', { chart: shown.heading });
     inputView.classList.add('hidden');
     chartView.classList.remove('hidden');
+    formChart = shown.request;
     nameChart();
   };
   // The heading names the chart if it is saved, by the settings read for it.
