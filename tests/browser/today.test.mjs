@@ -790,19 +790,27 @@ for (const profile of profiles) {
     });
 
     check('a drag past the run’s end counts the run’s days to its end, then calendar days: Apia’s skipped day once', async (page) => {
-      const { answers, hold } = await recordToday(page);
+      const { answers } = await recordToday(page);
       await page.goto(new URL('/', process.env.EC_BASE_URL).href);
       await setSettings(page, { place: APIA });
       // 5 January 2012: its run starts on 29 December 2011, then 31 December.
       await page.goto(new URL(todayLink({ day: '2012-01-05' }), process.env.EC_BASE_URL).href);
       await shown(page);
       assert.deepEqual(answers.at(-1).payload.run.slice(0, 2).map((day) => day.date), ['2011-12-29', '2011-12-31']);
-      // Back through the run to 31 December while its answers are on their way, so the
-      // run drawn is still 5 January's.
-      const releases = ['2012-01-04', '2012-01-03', '2012-01-02', '2012-01-01', '2011-12-31'].map((day) => hold(day));
+      // Back through the run to 31 December while every answer asked for since is held
+      // back, so the run drawn stays 5 January's.
+      let release;
+      const released = new Promise((resolve) => { release = resolve; });
+      await page.route('**/api/today', async (route) => {
+        await released;
+        await route.fallback();
+      });
       await page.locator('#today-days').focus();
       for (let press = 0; press < 5; press += 1) await page.keyboard.press('ArrowLeft');
       await page.waitForFunction(() => new URLSearchParams(location.hash.split('?')[1]).get('day') === '2011-12-31');
+      // Measured once the days have stopped sliding.
+      await settled(page);
+      assert.equal(await page.locator('.today-day.is-centre').getAttribute('data-today-pick'), '2011-12-31');
       // Two days back by a drag: 29 December, the run's first, then 28 December.
       const centre = await page.locator('.today-day.is-centre').boundingBox();
       const area = await page.locator('#today-days').boundingBox();
@@ -816,9 +824,10 @@ for (const profile of profiles) {
       await page.mouse.up();
       await page.waitForFunction(() => new URLSearchParams(location.hash.split('?')[1]).get('day') !== '2011-12-31');
       assert.equal(await part(page, 'day'), '2011-12-28');
-      for (const release of releases) release();
+      release();
       await shown(page);
-      assert.equal(answers.at(-1).request.date, '2011-12-28');
+      assert.ok(answers.some((answer) => answer.request.date === '2011-12-28'), 'asked for 28 December');
+      assert.equal(await page.locator('.today-day.is-centre').getAttribute('data-today-pick'), '2011-12-28');
     });
 
     check('the pull on one scale, its ends and the five gods named in words; a pull past the scale is refused', async (page) => {
