@@ -518,6 +518,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // can be asked for again (in the other language, or under the other Zi-hour
   // convention) and named in the address.
   let shown = null;
+  // The request of the chart whose birth the form holds: the form is filled with each
+  // chart drawn, and holds none once it is reset. A chart made from it again (Edit,
+  // then Create chart) keeps that chart's Zi-hour convention, and its pass of a
+  // repeated hour while its day, time and zone stay as they were.
+  let formChart = null;
   // Only the chart asked for last is drawn: an earlier answer that arrives later is
   // dropped. Leaving the chart drops any answer still on its way.
   let drawing = 0;
@@ -542,6 +547,11 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   // The form's gender, or null when none is given.
   const formGender = () => (GENDERS.includes(form.gender.value) ? form.gender.value : null);
+  // Two clock times are the same moment of the day, written with or without seconds.
+  const sameClock = (one, other) => {
+    const clock = (time) => (time.length === 5 ? `${time}:00` : time);
+    return clock(one) === clock(other);
+  };
   const setFormGender = (gender) => {
     form.querySelector(`input[name="gender"][value="${gender ?? ''}"]`).checked = true;
   };
@@ -668,6 +678,7 @@ document.addEventListener('DOMContentLoaded', () => {
       [heading, solarTime.solar, requiredTranslation(`zi_${zi}`)].join(' · '),
     ].join('\n');
     shown = { request, place, heading, text };
+    formChart = request;
     revealChart();
     return true;
   };
@@ -676,7 +687,10 @@ document.addEventListener('DOMContentLoaded', () => {
     document.title = t('chart_page_title', { chart: shown.heading });
     inputView.classList.add('hidden');
     chartView.classList.remove('hidden');
-    // The heading names the chart if it is saved, by the settings read for it.
+    nameChart();
+  };
+  // The heading names the chart if it is saved, by the settings read for it.
+  const nameChart = () => {
     library.sayName();
     if (!embedded && account.signedIn()) {
       const chosen = shown;
@@ -686,6 +700,11 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
   };
+
+  // A form begun anew holds no chart's birth.
+  form.addEventListener('reset', () => {
+    formChart = null;
+  });
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -704,9 +723,14 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    const from = formChart;
+    const sameMoment = from !== null && from.date === form.date.value && sameClock(from.time, form.time.value)
+      && from.location.timezone === resolvedLocation.timezone;
     const request = chartRequest({
-      date: form.date.value, time: form.time.value, place: resolvedLocation, lang: currentLanguage, zi: ZI_CONVENTIONS[0],
+      date: form.date.value, time: form.time.value, place: resolvedLocation, lang: currentLanguage,
+      zi: from?.conventions?.zi_convention ?? ZI_CONVENTIONS[0],
       gender: formGender(),
+      fold: sameMoment ? (from.location.fold ?? null) : null,
     });
 
     // A birth from Settings is kept, and Settings shown again.
@@ -916,6 +940,31 @@ document.addEventListener('DOMContentLoaded', () => {
     embedded,
     // Signing in, or choosing the account's language, sets the page's.
     onLanguage: takeLanguage,
+    // Another account taken in this browser (signed in from another tab): nothing read
+    // for the one before stays on the page, nor its library or its dialogs, and its late
+    // answers are not taken. What the page draws from the account's settings is read and
+    // drawn again, for this one.
+    onAccountChanged: () => {
+      settingsPage.forget(requiredTranslation('account_changed'));
+      library.forget();
+      if (saveChartDialog.open) saveChartDialog.close();
+      if (location.hash.startsWith(SAVE_ROUTE)) {
+        // A birth being added or corrected was the other account's: the form lets it go,
+        // and the address is followed again.
+        if (saving !== null) {
+          stopSaving();
+          form.reset();
+          clearResolvedLocation();
+        }
+        followAddress();
+      } else if (!settingsView.classList.contains('hidden')) {
+        settingsPage.show(requiredTranslation('account_changed'));
+      }
+      today.renew();
+      if (shown !== null && !chartView.classList.contains('hidden')) nameChart();
+      // A landing on your chart under way lands on this account's.
+      if (landingNow) openMyChart();
+    },
     // Signed in from the account's own button, on the empty form: your chart opens.
     onSignedIn: ({ requested }) => {
       if (!requested && !embedded && location.hash === '' && !inputView.classList.contains('hidden')) openMyChart();
@@ -1810,6 +1859,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // read then: a save is made from them.
   let chartToSave = null;
   let chartBasis = null;
+  // A save on its way: a second press does not save twice.
+  let chartSaving = false;
   // A name is one line of printable text, up to 80 characters, or none.
   const nameProblem = (name) => (name.length > 80 || /\p{Cc}/u.test(name) ? requiredTranslation('save_chart_name_error') : null);
   const openSaveChart = async () => {
@@ -1835,6 +1886,10 @@ document.addEventListener('DOMContentLoaded', () => {
       library.sayName();
       return;
     }
+    if (current.charts.length >= current.chart_limit) {
+      showToast(requiredTranslation('library_full', { limit: current.chart_limit }), true);
+      return;
+    }
     chartToSave = chosen;
     chartBasis = settingsPage.basis();
     saveChartChart.textContent = chosen.heading;
@@ -1850,7 +1905,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   saveChartForm.addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (chartToSave === null) return;
+    if (chartToSave === null || chartSaving) return;
     const name = saveChartName.value.trim();
     const problemWithName = nameProblem(name);
     if (problemWithName !== null) {
@@ -1861,11 +1916,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // The chart the dialog named when it opened, whatever is on screen now.
     const birth = { ...birthOfChart(chartToSave), ...(name ? { name } : {}) };
     let problem;
+    chartSaving = true;
     try {
       problem = await settingsPage.saveChart(birth, {}, chartBasis);
     } catch (err) {
       console.error(err);
       problem = err.message;
+    } finally {
+      chartSaving = false;
     }
     if (problem === null) {
       saveChartDialog.close();
@@ -1989,8 +2047,12 @@ document.addEventListener('DOMContentLoaded', () => {
       return problemWithName;
     }
     if (!request.gender) return requiredTranslation('save_chart_needs_gender');
-    // A corrected birth keeps its Zi-hour convention, and its pass while its day and
-    // time stay as they were.
+    const kept = settingsPage.current();
+    if (mode.as !== 'correct' && kept !== null && kept.charts.length >= kept.chart_limit) {
+      return requiredTranslation('library_full', { limit: kept.chart_limit });
+    }
+    // A corrected birth keeps its Zi-hour convention, and its pass while its day, time
+    // and zone stay as they were.
     const sameMoment = mode.as === 'correct' && mode.fold !== null;
     const birth = {
       ...(name ? { name } : {}),
@@ -2008,20 +2070,25 @@ document.addEventListener('DOMContentLoaded', () => {
       zi: mode.zi,
     };
     if (sameMoment) {
-      // The same moment, to the second, written with or without its seconds.
-      const clock = (time) => (time.length === 5 ? `${time}:00` : time);
+      // The same moment, to the second, in the same zone.
       const before = window.EC_LIBRARY.chartWith(settingsPage.current(), mode.chart);
-      if (before !== null && before.date === birth.date && clock(before.time) === clock(birth.time)) birth.fold = mode.fold;
+      if (before !== null && before.date === birth.date && sameClock(before.time, birth.time)
+        && before.place.timezone === birth.place.timezone) birth.fold = mode.fold;
     }
     if (mode.as === 'correct') return settingsPage.correctChart(mode.chart, birth, mode.basis);
     return settingsPage.saveChart(birth, { mine: mode.as === 'mine', coupleWith: mode.with }, mode.basis);
   };
 
   // Signed in, the bare address opens your chart; with none marked, the form stays.
-  // The address is replaced, so Back does not come here again.
+  // The address is replaced, so Back does not come here again. Each landing is
+  // numbered: a later one, for another account taken meanwhile, supersedes it.
+  let landing = 0;
+  let landingNow = false;
   const openMyChart = async () => {
     const arrival = arrivals;
-    const still = () => arrival === arrivals && location.hash === '' && saving === null && comparingWith === null && !pending;
+    const asked = ++landing;
+    landingNow = true;
+    const still = () => asked === landing && arrival === arrivals && location.hash === '' && saving === null && comparingWith === null && !pending;
     let kept;
     try {
       kept = await settingsPage.load(still);
@@ -2030,6 +2097,8 @@ document.addEventListener('DOMContentLoaded', () => {
       console.error(err);
       setFormError(err.message || t('settings_load_error'));
       return;
+    } finally {
+      if (asked === landing) landingNow = false;
     }
     if (!still() || kept.my_chart === null) return;
     const mine = window.EC_LIBRARY.chartWith(kept, kept.my_chart);

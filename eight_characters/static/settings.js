@@ -50,11 +50,13 @@
     // A change is made from the settings on screen. Once they are replaced by settings
     // this page did not make (changed elsewhere, another account's, a sign-in), the
     // changes still waiting were made from the old ones, and are not made: `basis`
-    // counts the replacements, and `replaced` says why the last one happened. A sign-out
-    // starts a new `generation`: a read answered after it is not taken.
+    // counts the replacements, and `replaced` says why the last one happened. A sign-out,
+    // or another account taken, starts a new `generation`: a read or a change answered
+    // after it is not taken, and `ended` says why.
     let basis = 0;
     let replaced = '';
     let generation = 0;
+    let ended = '';
     // The basis of the settings last drawn here: a change from this page's controls is
     // made from them, so settings read meanwhile by Today or the library (a chart saved
     // elsewhere, say) replace them, and the change is not made.
@@ -99,6 +101,7 @@
         && (value.pending_partner === null || ids.has(value.pending_partner))
         && Array.isArray(value.couples) && value.couples.every((couple) => isId(couple?.id)
           && Array.isArray(couple.charts) && couple.charts.length === 2 && couple.charts.every((id) => ids.has(id)))
+        && Number.isInteger(value.chart_limit) && value.chart_limit > 0
         && (value.place === null || typeof value.place === 'object');
       if (!ok) throw new Error(t('settings_answer_error', { status: 200 }));
       return value;
@@ -109,7 +112,7 @@
     const read = async (why = t('settings_changed_elsewhere')) => {
       const at = generation;
       const value = checked(await call('GET', '/api/account/settings'));
-      if (at !== generation) throw new Error(t('account_session_ended'));
+      if (at !== generation) throw new Error(ended);
       if (settings === null || value.key !== settings.key || value.updated_at !== settings.updated_at) {
         basis += 1;
         replaced = why;
@@ -175,12 +178,12 @@
           if (settings === null || from < 0) return t('settings_load_error');
           if (from !== basis) return replaced;
           const value = checked(await call(method, path, { ...body, key: settings.key, updated_at: settings.updated_at }));
-          if (at !== generation) return t('account_session_ended');
+          if (at !== generation) return ended;
           settings = value;
           onChanged(settings);
           return null;
         } catch (err) {
-          if (at !== generation) return t('account_session_ended');
+          if (at !== generation) return ended;
           // A change not made, for whatever reason, stops the changes waiting behind it:
           // they were made from the settings it was to leave.
           basis += 1;
@@ -313,16 +316,56 @@
         : `<ul class="saved-cards">${settings.charts.map((chart) => card(settings, chart, renaming === chart.id
           ? `<form class="settings-rename" data-chart="${esc(chart.id)}" novalidate>
               <label for="settings-rename-${esc(chart.id)}">${esc(t('settings_rename_label'))}</label>
-              <input type="text" id="settings-rename-${esc(chart.id)}" maxlength="80" autocomplete="off" spellcheck="false" value="${esc(chart.name ?? '')}">
+              <input type="text" id="settings-rename-${esc(chart.id)}" maxlength="80" autocomplete="off" spellcheck="false">
               <button type="submit" class="bar-action" data-settings-action="rename-save" data-chart="${esc(chart.id)}">${esc(t('settings_rename_save'))}</button>
               <button type="button" class="bar-action" data-settings-action="rename-cancel" data-chart="${esc(chart.id)}">${esc(t('cancel'))}</button>
             </form>`
           : `${chart.pillars === null ? '' : action('open', chart, t('settings_chart_open'))}${action('rename', chart, t('settings_chart_rename'))}${action('correct', chart, t('settings_chart_correct'))}${action('remove', chart, t('settings_chart_remove'))}`)).join('')}</ul>`;
+      // The name being changed goes in as the field's value, never into the markup: a
+      // name is text, quotes and all.
+      if (renaming !== null) {
+        const field = chartsBody.querySelector(`#settings-rename-${CSS.escape(renaming)}`);
+        const chart = library.chartWith(settings, renaming);
+        if (field && chart) field.value = chart.name ?? '';
+      }
       chartsBody.insertAdjacentHTML('beforeend', `<p class="settings-note">${esc(t('settings_consent'))}</p>`);
     };
 
     // What a change from these parts asks the API, made from the settings drawn here.
     const chosenIn = (selector) => view.querySelector(selector)?.value ?? null;
+    // A full library takes no new birth: said here, in the page's language.
+    const full = () => {
+      if (drawn.charts.length < drawn.chart_limit) return false;
+      say(t('library_full', { limit: drawn.chart_limit }), true);
+      return true;
+    };
+    // A change asked for again while it is on its way is not asked for twice: a second
+    // press on Pair, say, adds nothing to the first. Other changes wait their turn.
+    const underWay = new Set();
+    const once = async (what, run) => {
+      if (underWay.has(what)) return;
+      underWay.add(what);
+      try {
+        await run();
+      } finally {
+        underWay.delete(what);
+      }
+    };
+    // Removing a chart says first what else it ends: being your chart, its couple, or
+    // its wait to pair with your chart.
+    const removing = (chart) => {
+      const name = chartName(chart);
+      const partner = library.partnerOf(drawn, chart.id);
+      const partnerName = partner === null ? null : chartName(partner);
+      if (chart.id === drawn.my_chart) {
+        return partner === null
+          ? t('settings_chart_remove_confirm_mine', { name })
+          : t('settings_chart_remove_confirm_mine_couple', { name, partner: partnerName });
+      }
+      if (partner !== null) return t('settings_chart_remove_confirm_couple', { name, partner: partnerName });
+      if (chart.id === drawn.pending_partner) return t('settings_chart_remove_confirm_pending', { name });
+      return t('settings_chart_remove_confirm', { name });
+    };
     const onLibrary = async (event) => {
       const button = event.target.closest('[data-settings-action]');
       if (!button || drawn === null) return;
@@ -334,13 +377,16 @@
           break;
         case 'mark': {
           const chosen = chosenIn('#settings-mine-choice');
-          if (chosen !== null) await change('PUT', '/api/account/my-chart', { chart: chosen }, t('settings_mine_marked'));
+          if (chosen !== null) {
+            await once(`mark ${chosen}`, () => change('PUT', '/api/account/my-chart', { chart: chosen }, t('settings_mine_marked')));
+          }
           break;
         }
         case 'unmark':
-          await change('DELETE', '/api/account/my-chart', {}, t('settings_mine_cleared'));
+          await once('unmark', () => change('DELETE', '/api/account/my-chart', {}, t('settings_mine_cleared')));
           break;
         case 'add-mine':
+          if (full()) break;
           onAddBirth({ as: 'mine' });
           break;
         case 'pair': {
@@ -351,17 +397,19 @@
             say(t('settings_pair_same'), true);
             break;
           }
-          await change('POST', '/api/account/couples', { charts: [first, second] }, t('settings_paired'));
+          await once(`pair ${first} ${second}`, () => change('POST', '/api/account/couples', { charts: [first, second] }, t('settings_paired')));
           break;
         }
         case 'add-partner': {
           const of = chosenIn('#settings-partner-of');
-          if (of !== null) onAddBirth({ as: 'partner', with: of });
+          if (of !== null && !full()) onAddBirth({ as: 'partner', with: of });
           break;
         }
-        case 'end':
-          await change('DELETE', `/api/account/couples/${encodeURIComponent(button.dataset.couple)}`, {}, t('settings_couple_ended'));
+        case 'end': {
+          const couple = button.dataset.couple;
+          await once(`end ${couple}`, () => change('DELETE', `/api/account/couples/${encodeURIComponent(couple)}`, {}, t('settings_couple_ended')));
           break;
+        }
         case 'rename':
           renaming = id;
           draw();
@@ -380,10 +428,10 @@
           // Asked once more on the button itself: a second press removes.
           if (button.dataset.confirming !== 'true') {
             button.dataset.confirming = 'true';
-            button.textContent = t('settings_chart_remove_confirm', { name: chartName(chart) });
+            button.textContent = removing(chart);
             break;
           }
-          await change('DELETE', `/api/account/charts/${encodeURIComponent(chart.id)}`, {}, t('settings_chart_removed'));
+          await once(`remove ${chart.id}`, () => change('DELETE', `/api/account/charts/${encodeURIComponent(chart.id)}`, {}, t('settings_chart_removed')));
           break;
         default:
           break;
@@ -614,11 +662,12 @@
       (next ?? placeInput).focus();
     };
 
-    // Shows the settings, read anew: whatever another tab changed meanwhile is shown.
-    // Each showing is numbered: only the latest draws or says anything, so one that ends
-    // late changes nothing of a later one, its failure included.
+    // Shows the settings, read anew: whatever another tab changed meanwhile is shown,
+    // and `note` says why they are shown again, if they are. Each showing is numbered:
+    // only the latest draws or says anything, so one that ends late changes nothing of a
+    // later one, its failure included.
     let showing = 0;
-    const show = async () => {
+    const show = async (note = '') => {
       const mine = ++showing;
       say('');
       view.classList.remove('hidden');
@@ -627,7 +676,7 @@
         await Promise.all([load(() => mine === showing), loadCatalog()]);
         if (mine !== showing) return;
         draw();
-        say('');
+        say(note);
       } catch (err) {
         if (mine !== showing) return;
         console.error(err);
@@ -663,14 +712,16 @@
       saveChart,
       correctChart,
       chartName,
-      // A sign-out forgets what was read for the account and leaves nothing of it on the
-      // page, and the changes still waiting are not made.
-      forget: () => {
+      // A sign-out, or another account taken (`why` says which), forgets what was read for
+      // the account and leaves nothing of it on the page, and the changes still waiting
+      // are not made.
+      forget: (why = t('account_session_ended')) => {
         settings = null;
         drawn = null;
         generation += 1;
         basis += 1;
-        replaced = t('account_session_ended');
+        replaced = why;
+        ended = why;
         renaming = null;
         mineBody.innerHTML = '';
         couplesBody.innerHTML = '';
