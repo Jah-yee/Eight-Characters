@@ -174,6 +174,14 @@
     const move = (changes, method = 'replaceState') => {
       const next = { ...state, ...changes };
       go(address(next), method);
+      // Topics select material already in this day's answer; they are not inputs to
+      // /api/today. An answer on its way draws the latest topic when it arrives.
+      if (Object.keys(changes).every((key) => key === 'topic')) {
+        state = next;
+        if (answer !== null) keepingFocus(() => { drawTopics(); drawPanel(); });
+        else if (next.topic === null) drawPanel();
+        return;
+      }
       show(next);
     };
 
@@ -334,6 +342,19 @@
     // step moves the days rather than drawing them anew; one coming into view enters
     // from a step beyond. ──
     const dayNodes = new Map();
+    const placeDay = (node, place) => {
+      const before = new DOMMatrix(getComputedStyle(node).transform);
+      node.style.removeProperty('--flow-day-x'); node.style.removeProperty('--flow-day-scale');
+      node.dataset.place = place;
+      const target = new DOMMatrix(getComputedStyle(node).transform);
+      window.EC_MOTION.spring(node, 'day', {
+        from: { x: before.e, scale: before.a }, to: { x: target.e, scale: target.a }, rebase: true,
+        write: ({ x, scale }) => {
+          node.style.setProperty('--flow-day-x', `${x}px`); node.style.setProperty('--flow-day-scale', String(scale));
+        },
+        complete: () => { node.style.removeProperty('--flow-day-x'); node.style.removeProperty('--flow-day-scale'); },
+      });
+    };
     const dayMarkup = (day) => `${cards(day.pillar, 'large')}
       <span class="today-day-when"><span class="today-day-weekday">${esc(weekdayOf(day.date))}</span>
         <span class="today-day-date">${esc(dayMonthOf(day.date))}</span></span>
@@ -377,7 +398,7 @@
       // Laid out where they enter from, then moved: the days slide in.
       if (entering && moved !== 0) void daysTrack.offsetWidth;
       near.forEach(({ offset }, date) => {
-        dayNodes.get(date).dataset.place = placeOf(offset);
+        placeDay(dayNodes.get(date), placeOf(offset));
       });
       return true;
     };
@@ -668,17 +689,14 @@
           }).join('')}</tbody>
         </table>`;
     };
-    const drawPanel = () => {
-      if (state.topic === null) {
-        panel.classList.add('hidden');
-        view.classList.remove('has-panel');
-        detail.innerHTML = '';
-        return;
-      }
-      detail.innerHTML = topicMarkup(state.topic);
-      panel.classList.remove('hidden');
-      view.classList.add('has-panel');
-    };
+    const drawPanel = () => window.EC_MOTION.layout(view, () => {
+      const open = state.topic !== null;
+      detail.classList.toggle('hidden', !open);
+      if (open) detail.innerHTML = topicMarkup(state.topic);
+      window.EC_MOTION.panel(panel, open);
+      view.classList.toggle('has-panel', open);
+      if (!open) window.EC_MOTION.retire(detail);
+    }, ':scope > .chart-column');
     panel.addEventListener('click', (event) => {
       if (event.target.closest('[data-close-today-panel]')) closeTopic();
     });

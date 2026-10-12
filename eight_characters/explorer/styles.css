@@ -177,7 +177,7 @@ body {
   font-weight: 400;
   letter-spacing: 1.5px;
   text-transform: uppercase;
-  transition: all 0.3s ease;
+  transition: all var(--flow-feedback) var(--flow-feedback-ease);
 }
 
 .view-tab:hover {
@@ -210,7 +210,7 @@ body {
   font-size: 10px;
   font-weight: 400;
   letter-spacing: 0.4px;
-  transition: all 0.25s ease;
+  transition: all var(--flow-feedback) var(--flow-feedback-ease);
 }
 
 .basin-tab:hover {
@@ -289,7 +289,7 @@ input[type='text'] {
   font-size: 13px;
   font-weight: 400;
   outline: none;
-  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+  transition: border-color var(--flow-feedback) var(--flow-feedback-ease), box-shadow var(--flow-feedback) var(--flow-feedback-ease);
 }
 
 input[type='text']:focus {
@@ -321,7 +321,7 @@ input[type='range']::-webkit-slider-thumb {
   border: 1px solid rgba(42, 37, 32, 0.16);
   cursor: pointer;
   box-shadow: 0 1px 4px rgba(42, 37, 32, 0.08);
-  transition: box-shadow 0.2s ease;
+  transition: box-shadow var(--flow-feedback) var(--flow-feedback-ease);
 }
 
 input[type='range']::-webkit-slider-thumb:hover {
@@ -378,7 +378,7 @@ input[type='range']::-moz-range-thumb {
   border-radius: 10px;
   padding: 9px 20px;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all var(--flow-feedback) var(--flow-feedback-ease);
 }
 
 .btn:hover {
@@ -481,7 +481,7 @@ input[type='range']::-moz-range-thumb {
   border-radius: 10px;
   padding: 8px 14px;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all var(--flow-feedback) var(--flow-feedback-ease);
 }
 
 .toggle-btn:hover {
@@ -514,7 +514,7 @@ input[type='range']::-moz-range-thumb {
   font-weight: 400;
   color: var(--text-muted);
   letter-spacing: 0.2px;
-  transition: color 0.2s ease;
+  transition: color var(--flow-feedback) var(--flow-feedback-ease);
 }
 
 .check-grid label:hover {
@@ -532,7 +532,7 @@ input[type='range']::-moz-range-thumb {
   cursor: pointer;
   position: relative;
   flex-shrink: 0;
-  transition: all 0.25s ease;
+  transition: all var(--flow-feedback) var(--flow-feedback-ease);
 }
 
 .check-grid input[type='checkbox']:hover {
@@ -821,7 +821,7 @@ input[type='range']::-moz-range-thumb {
   fill: none;
   stroke-width: 1.7;
   opacity: 0.65;
-  animation: pulse-ring 1.9s ease-in-out infinite;
+  animation: none;
   pointer-events: none;
 }
 
@@ -1190,7 +1190,7 @@ input[type='range']::-moz-range-thumb {
   box-shadow: 0 4px 24px rgba(42, 37, 32, 0.08);
   opacity: 0;
   transform: translateY(4px);
-  transition: opacity 120ms ease, transform 120ms ease;
+  transition: opacity var(--flow-feedback) var(--flow-feedback-ease), transform var(--flow-settle) var(--flow-spring);
   max-width: 290px;
   line-height: 1.55;
 }

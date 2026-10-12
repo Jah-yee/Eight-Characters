@@ -32,6 +32,10 @@ dialog[open]::backdrop { opacity: 1; }
   dialog[open]::backdrop { opacity: 0; }
 }
 .today-day { transition: visibility var(--flow-settle); }
+.today-day {
+  transform: translateX(calc(var(--flow-day-x, calc(-50% + var(--x))) + var(--drag, 0px)))
+    scale(var(--flow-day-scale, var(--s)));
+}
 .today-view :is(.today-body, .chart-panel) { transition: opacity var(--flow-feedback) var(--flow-feedback-ease); }
 @media print {
   *, *::before, *::after { animation: none !important; transition: none !important; }

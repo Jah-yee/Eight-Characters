@@ -2060,7 +2060,11 @@
     const ty = height / 2 - (minY + maxY) / 2 * scale;
     const transform = d3.zoomIdentity.translate(tx, ty).scale(scale);
 
-    svg.transition().duration(420).call(zoomBehavior.transform, transform);
+    const current = d3.zoomTransform(svg.node());
+    window.EC_MOTION.spring(svg.node(), 'zoom', {
+      from: { x: current.x, y: current.y, k: current.k }, to: { x: transform.x, y: transform.y, k: transform.k }, rebase: true,
+      write: ({ x, y, k }) => svg.call(zoomBehavior.transform, d3.zoomIdentity.translate(x, y).scale(k)),
+    });
   }
 
   function rebuildGraph(shouldFit = true) {
