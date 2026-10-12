@@ -7,7 +7,7 @@
 }
 [data-flow-layout] { scale: var(--flow-layout-sx, 1) var(--flow-layout-sy, 1); transform-origin: 0 0; }
 .chart-panel.hidden[data-flow-leaving] { display: block !important; pointer-events: none; }
-.chart-panel[data-flow-leaving] > .hidden[data-flow-retain] { display: block !important; }
+.chart-panel[data-flow-leaving] .hidden[data-flow-retain] { display: block !important; }
 .hidden-stems-panel, .hidden-stems-panel.is-expanded { transition: none; }
 [data-flow-disclosure] { overflow: hidden; box-sizing: border-box; }
 .toast { transition: none; }

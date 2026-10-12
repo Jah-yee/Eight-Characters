@@ -302,6 +302,8 @@
     });
   };
   const panel = (element, open) => {
+    const body = element.querySelector(':scope > .chart-panel-body');
+    if (!body) throw new Error('Natural flow panel content is missing.');
     let state = panelStates.get(element);
     if (!state) {
       state = { open: false, box: null, retired: new Set(), saved: null, originalHeight: element.style.height };
@@ -311,18 +313,21 @@
       }).observe(element);
     }
     const resize = (fromHeight) => {
-      element.style.height = state.originalHeight;
-      const targetHeight = element.getBoundingClientRect().height;
+      if (!element.getClientRects().length) {
+        cancel(element, 'panel-size'); element.style.height = state.originalHeight; state.box = null; return;
+      }
+      const destination = () => {
+        const style = getComputedStyle(element);
+        const edges = ['paddingTop', 'paddingBottom', 'borderTopWidth', 'borderBottomWidth']
+          .reduce((height, key) => height + Number.parseFloat(style[key]), 0);
+        const height = Number.parseFloat(getComputedStyle(body).height) + edges;
+        return { height: Math.min(height, style.maxHeight === 'none' ? Infinity : Number.parseFloat(style.maxHeight)) };
+      };
+      const targetHeight = destination().height;
       if (Math.abs(targetHeight - fromHeight) > .5 || value(element, 'panel-size') !== null) {
         spring(element, 'panel-size', {
           from: { height: fromHeight },
-          to: () => {
-            const held = element.style.height;
-            element.style.height = state.originalHeight;
-            const height = element.getBoundingClientRect().height;
-            element.style.height = held;
-            return { height };
-          },
+          to: destination,
           canComplete: () => !element.querySelector('[data-flow-disclosure]'),
           write: ({ height }) => { element.style.height = `${Math.max(0, height)}px`; },
           complete: () => { element.style.height = state.originalHeight;

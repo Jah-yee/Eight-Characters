@@ -2324,6 +2324,7 @@ body {
   container: panel / inline-size;
   background: var(--bg);
 }
+.chart-panel-body { display: flow-root; }
 .chart-panel-bar {
   display: flex;
   justify-content: flex-end;

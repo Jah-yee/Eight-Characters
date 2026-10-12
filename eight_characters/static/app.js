@@ -1081,7 +1081,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // The panel is open while any of its sections is: the modules show and hide their
   // own sections, and the panel follows them.
-  const panelSections = [...chartPanel.querySelectorAll(':scope > section')];
+  const panelSections = [...chartPanel.querySelectorAll(':scope > .chart-panel-body > section')];
   const syncPanel = () => {
     const open = panelSections.some((section) => !section.classList.contains('hidden'));
     motion.layout(chartView, () => {
@@ -2562,7 +2562,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const goToReading = (path, part) => {
     goToTopic(path);
     if (!part) return;
-    const section = [...chartPanel.querySelectorAll(':scope > section:not(.hidden)')].at(-1);
+    const section = [...chartPanel.querySelectorAll(':scope > .chart-panel-body > section:not(.hidden)')].at(-1);
     if (!section || !canonReadings.arrive(section, part, true)) throw linkError('topic');
   };
   const ROLES = ['friend', 'rob_wealth', 'eating_god', 'hurting_officer', 'indirect_wealth', 'direct_wealth',

@@ -82,6 +82,48 @@ for (const profile of profiles) {
       assert.equal(await page.locator('#pillars .card-inner').evaluateAll((inners) => inners.every((inner) => inner.style.height === '' && inner.style.transform === '')), true);
     });
 
+    check('measuring a global flip preserves the page scroll position', async (page) => {
+      await openChart(page);
+      await page.setViewportSize({ width: profile.viewport.width, height: 500 });
+      const position = await page.evaluate(async () => {
+        scrollTo(0, document.documentElement.scrollHeight - innerHeight - 10);
+        const before = scrollY;
+        document.querySelector('[data-display="ten-gods"]').click();
+        await new Promise(requestAnimationFrame);
+        return { before, after: scrollY, maximum: document.documentElement.scrollHeight - innerHeight };
+      });
+      assert.ok(position.before > 0, 'the page is scrolled before the global flip');
+      assert.ok(position.maximum >= position.before, 'the displayed sizing frame can retain that position');
+      assert.ok(Math.abs(position.before - position.after) < 1);
+      await settled(page);
+    });
+
+    if (profile.name === 'desktop') check('content measurement preserves manual scroll during drawer growth', async (page) => {
+      await openChart(page);
+      await page.setViewportSize({ width: profile.viewport.width, height: 2400 });
+      const heights = {};
+      for (const topic of ['season', 'roots']) {
+        await page.locator(`[data-context="${topic}"]`).click();
+        await settled(page);
+        heights[topic] = await page.locator('#chart-panel').evaluate((panel) => panel.getBoundingClientRect().height);
+      }
+      const [shorter, taller] = heights.season < heights.roots ? ['season', 'roots'] : ['roots', 'season'];
+      await page.locator('[data-close-panel]').click(); await settled(page);
+      await page.locator(`[data-context="${shorter}"]`).click(); await settled(page);
+      const position = await page.locator('#chart-panel').evaluate(async (panel, taller) => {
+        document.querySelector(`[data-context="${taller}"]`).click();
+        await new Promise(queueMicrotask);
+        panel.scrollTop = Math.min(20, (panel.scrollHeight - panel.clientHeight) / 4);
+        const before = panel.scrollTop;
+        await new Promise(requestAnimationFrame);
+        return { before, after: panel.scrollTop, maximum: panel.scrollHeight - panel.clientHeight };
+      }, taller);
+      assert.ok(position.before > 0, 'the growing drawer has scrollable content');
+      assert.ok(position.maximum >= position.before, 'its displayed frame can retain the manual position');
+      assert.equal(position.after, position.before);
+      await settled(page);
+    });
+
     check('a panel makes room without jumping the chart and can reverse immediately', async (page) => {
       await openChart(page);
       const shift = await page.evaluate(async () => {

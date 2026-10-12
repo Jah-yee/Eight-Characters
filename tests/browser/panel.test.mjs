@@ -209,7 +209,7 @@ for (const profile of profiles) {
         const failures = [];
         await visit(page, async (name) => {
           const found = await page.locator('#chart-panel').evaluate((panel) => {
-            const page = [...panel.querySelectorAll(':scope > section')].filter((section) => section.checkVisibility()).at(-1);
+            const page = [...panel.querySelectorAll(':scope > .chart-panel-body > section')].filter((section) => section.checkVisibility()).at(-1);
             const notes = [...panel.querySelectorAll('.relationship-note')].filter((note) => note.checkVisibility());
             const texts = [...page.querySelectorAll('*')].filter((node) => node.checkVisibility()
               && [...node.childNodes].some((child) => child.nodeType === Node.TEXT_NODE && child.textContent.trim()));
