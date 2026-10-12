@@ -132,7 +132,8 @@
     // Scroll destinations depend on the final sizes of their disclosures and panels.
     const ordered = [...moving].sort((a, b) => Number(a.name === 'scroll') - Number(b.name === 'scroll'));
     for (const channel of ordered) {
-      refreshTarget(channel);
+      if (channel.owner.getClientRects().length) refreshTarget(channel);
+      else if (channel.name === 'scroll') { cancel(channel.owner, 'scroll'); continue; }
       Object.assign(channel.value, channel.target);
       Object.keys(channel.velocity).forEach((key) => { channel.velocity[key] = 0; });
       complete(channel);

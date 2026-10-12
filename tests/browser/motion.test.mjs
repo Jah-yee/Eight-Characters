@@ -69,7 +69,13 @@ for (const profile of profiles) {
       await openChart(page);
       await page.locator('[data-display="ten-gods"]').click();
       await page.waitForTimeout(120);
-      await page.locator('#back-btn').click();
+      const turning = await page.locator('#back-btn').evaluate((button) => {
+        const turning = document.querySelectorAll('.card.is-turning').length;
+        button.click();
+        window.dispatchEvent(new Event('resize'));
+        return turning;
+      });
+      assert.ok(turning > 0, 'the view leaves while cards are turning');
       await page.locator('#input-view').waitFor({ state: 'visible' });
       await settled(page);
       assert.equal(await page.locator('.card.is-turning').count(), 0);
