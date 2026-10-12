@@ -1307,20 +1307,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // The facing side sizes the card, so a taller back grows the card as it turns.
   let cardHeightFrame = null;
-  let cardHeights = new Map();
+  let cardHeights = new WeakMap();
   const naturalCardHeights = (now) => {
     if (Number.isFinite(now) && cardHeightFrame === now) return cardHeights;
-    // The pillars share grid rows. Measure all facing sides together, without
-    // any animated height holding those rows at their previous size.
-    const cards = [...pillarsContainer.querySelectorAll('.card')].map((card) => ({
-      card, inner: card.querySelector('.card-inner'), turning: card.classList.contains('is-turning'),
-    }));
-    const saved = cards.map(({ inner }) => inner.style.height);
-    for (const { card, inner } of cards) { card.classList.remove('is-turning'); inner.style.height = ''; }
-    cardHeights = new Map(cards.map(({ inner }) => [inner, Number.parseFloat(getComputedStyle(inner).height)]));
-    cards.forEach(({ card, inner, turning }, index) => {
-      inner.style.height = saved[index]; card.classList.toggle('is-turning', turning);
-    });
+    // Measure the complete facing-row layout without changing the live document's
+    // height or scrollbar bounds. The hidden measuring tree uses the same ancestors,
+    // stylesheet and current width, and exists only for this synchronous read.
+    const cards = [...pillarsContainer.querySelectorAll('.card')];
+    const measured = pillarsContainer.cloneNode(true);
+    measured.inert = true; measured.setAttribute('aria-hidden', 'true');
+    Object.assign(measured.style, { position: 'fixed', left: '-10000px', top: '0', right: 'auto', bottom: 'auto',
+      width: getComputedStyle(pillarsContainer).width, height: 'auto', margin: '0', opacity: '0', pointerEvents: 'none' });
+    const measuredCards = [...measured.querySelectorAll('.card')];
+    for (const card of measuredCards) {
+      card.classList.remove('is-turning');
+      const inner = card.querySelector('.card-inner');
+      inner.style.height = ''; inner.style.transform = '';
+    }
+    pillarsContainer.parentElement.append(measured);
+    try {
+      cardHeights = new WeakMap(cards.map((card, index) => [card.querySelector('.card-inner'),
+        Number.parseFloat(getComputedStyle(measuredCards[index].querySelector('.card-inner')).height)]));
+    } finally { measured.remove(); }
     cardHeightFrame = now;
     return cardHeights;
   };
