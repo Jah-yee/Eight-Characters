@@ -210,6 +210,54 @@ for (const profile of profiles) {
       await settled(page);
     }, { signedIn: false });
 
+    check('deletion disclosure lands at intrinsic height when opened during dialog scaling', async (page) => {
+      await openChart(page);
+      await page.locator('#account-btn').evaluate((button) => button.click());
+      await page.waitForFunction(() => document.querySelector('#account-dialog').open && !document.querySelector('#account-delete-open').disabled);
+      const scale = await page.locator('#account-delete-open').evaluate((button) => {
+        const scale = new DOMMatrix(getComputedStyle(document.querySelector('#account-dialog')).transform).d;
+        button.click();
+        return scale;
+      });
+      assert.ok(scale < .999, 'the deletion disclosure opens during dialog scaling');
+      const landing = await page.locator('#account-delete').evaluate((form) => new Promise((resolve) => {
+        let previous = form.getBoundingClientRect().height;
+        const sample = () => {
+          const height = form.getBoundingClientRect().height;
+          if (form.style.height === 'auto') { resolve(Math.abs(height - previous)); return; }
+          previous = height;
+          requestAnimationFrame(sample);
+        };
+        requestAnimationFrame(sample);
+      }));
+      assert.ok(landing < 2, `The disclosure jumped ${landing}px at intrinsic height.`);
+      await settled(page);
+    });
+
+    check('a topic resize reversed before its first frame keeps the matching height', async (page) => {
+      await openChart(page);
+      await page.setViewportSize({ width: profile.viewport.width, height: 2000 });
+      await page.locator('[data-context="season"]').click();
+      await settled(page);
+      const change = await page.locator('#chart-panel').evaluate(async (panel) => {
+        const height = panel.getBoundingClientRect().height;
+        document.querySelector('[data-context="roots"]').click();
+        await new Promise(queueMicrotask);
+        const resizing = window.EC_MOTION.value(panel, 'panel-size') !== null;
+        document.querySelector('[data-context="season"]').click();
+        await new Promise(queueMicrotask);
+        let deviation = Math.abs(panel.getBoundingClientRect().height - height);
+        while (window.EC_MOTION.value(panel, 'panel-size') !== null) {
+          await new Promise(requestAnimationFrame);
+          deviation = Math.max(deviation, Math.abs(panel.getBoundingClientRect().height - height));
+        }
+        return { resizing, deviation };
+      });
+      assert.equal(change.resizing, true);
+      assert.ok(change.deviation < 2, `The reversed topic resized by ${change.deviation}px.`);
+      await settled(page);
+    });
+
     check('the first reading disclosure starts with no height or padding jump', async (page) => {
       await openChart(page);
       await page.locator('.pillar-identity[data-pillar="hour"]').click();

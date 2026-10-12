@@ -113,11 +113,19 @@
   };
 
   const disclose = (element, open, animate = true, after = null) => {
+    const layoutHeight = () => {
+      const style = getComputedStyle(element);
+      let height = Number.parseFloat(style.height);
+      if (style.boxSizing !== 'border-box') {
+        for (const key of ['paddingTop', 'paddingBottom', 'borderTopWidth', 'borderBottomWidth']) height += Number.parseFloat(style[key]);
+      }
+      return height;
+    };
     if (!disclosureStyles.has(element)) disclosureStyles.set(element, {
       paddingTop: element.style.paddingTop, paddingBottom: element.style.paddingBottom,
     });
     const original = disclosureStyles.get(element);
-    const from = { height: element.hidden ? 0 : element.getBoundingClientRect().height,
+    const from = { height: element.hidden ? 0 : layoutHeight(),
       opacity: element.hidden ? 0 : Number(getComputedStyle(element).opacity),
       paddingTop: element.hidden ? 0 : Number.parseFloat(getComputedStyle(element).paddingTop),
       padding: element.hidden ? 0 : Number.parseFloat(getComputedStyle(element).paddingBottom) };
@@ -125,7 +133,7 @@
     element.style.paddingTop = original.paddingTop;
     element.style.paddingBottom = original.paddingBottom;
     element.style.height = 'auto';
-    const natural = { height: element.getBoundingClientRect().height,
+    const natural = { height: layoutHeight(),
       paddingTop: Number.parseFloat(getComputedStyle(element).paddingTop),
       padding: Number.parseFloat(getComputedStyle(element).paddingBottom) };
     element.setAttribute('data-flow-disclosure', '');
@@ -273,7 +281,7 @@
     const resize = (fromHeight) => {
       element.style.height = state.originalHeight;
       const targetHeight = element.getBoundingClientRect().height;
-      if (Math.abs(targetHeight - fromHeight) > .5) {
+      if (Math.abs(targetHeight - fromHeight) > .5 || value(element, 'panel-size') !== null) {
         spring(element, 'panel-size', {
           from: { height: fromHeight }, to: { height: targetHeight },
           write: ({ height }) => { element.style.height = `${Math.max(0, height)}px`; },
