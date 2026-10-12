@@ -1133,6 +1133,10 @@ document.addEventListener('DOMContentLoaded', () => {
       if (card.classList.contains('is-flipped') === flip) return;
       if (animate) flipCard(card);
       else {
+        const inner = card.querySelector('.card-inner');
+        motion.cancel(inner, 'flip');
+        card.classList.remove('is-turning');
+        inner.style.height = ''; inner.style.transform = '';
         card.classList.toggle('is-flipped', flip);
         labelCard(card);
       }
@@ -2447,11 +2451,12 @@ document.addEventListener('DOMContentLoaded', () => {
   let toastTimer = null;
   const showToast = (text, isError) => {
     clearTimeout(toastTimer);
+    const initialOpacity = Number(getComputedStyle(toast).opacity);
     toast.textContent = text;
     toast.classList.toggle('is-error', isError);
     toast.classList.add('is-shown');
     const fade = (visible) => motion.spring(toast, 'toast', {
-      from: { progress: 0 }, to: { progress: visible ? 1 : 0 },
+      from: { progress: visible ? initialOpacity : Number(getComputedStyle(toast).opacity) }, to: { progress: visible ? 1 : 0 },
       write: ({ progress }) => {
         toast.style.opacity = String(Math.max(0, Math.min(1, progress)));
         toast.style.transform = `translate(-50%, ${(1 - progress) * 8}px)`;

@@ -62,6 +62,9 @@
     if (!channel) {
       channel = { owner, value: { ...from }, velocity: {}, range: {}, active: false };
       own.set(name, channel);
+    } else if (!channel.active) {
+      channel.value = { ...from };
+      channel.velocity = {};
     } else if (rebase) Object.assign(channel.value, from);
     for (const key of Object.keys(to)) {
       if (!Number.isFinite(to[key]) || !Number.isFinite(channel.value[key])) {
@@ -88,7 +91,7 @@
   };
   const value = (owner, name) => {
     const channel = channels.get(owner)?.get(name);
-    return channel ? { ...channel.value } : null;
+    return channel?.active ? { ...channel.value } : null;
   };
   const cancel = (owner, name) => {
     const channel = channels.get(owner)?.get(name);
