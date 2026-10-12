@@ -213,7 +213,22 @@
         if (state.open && !element.closest('.hidden')) state.box = element.getBoundingClientRect();
       }).observe(element);
     }
-    if (state.open === open) return;
+    if (state.open === open) {
+      if (open && state.box !== null) {
+        const fromHeight = value(element, 'panel-size')?.height ?? state.box.height;
+        element.style.height = '';
+        const targetHeight = element.getBoundingClientRect().height;
+        if (Math.abs(targetHeight - fromHeight) > .5) {
+          spring(element, 'panel-size', {
+            from: { height: fromHeight }, to: { height: targetHeight },
+            write: ({ height }) => { element.style.height = `${Math.max(0, height)}px`; },
+            complete: () => { element.style.height = ''; state.box = element.getBoundingClientRect(); cancel(element, 'panel-size'); },
+          });
+        }
+      }
+      return;
+    }
+    cancel(element, 'panel-size');
     state.open = open;
     element.inert = !open;
     if (open) {

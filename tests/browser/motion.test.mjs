@@ -70,6 +70,36 @@ for (const profile of profiles) {
       assert.ok(state.transitions.every((entry) => entry.transition === '0s' && entry.animation === 'none'));
     });
 
+    check('closing a settled drawer preserves its displayed position', async (page) => {
+      await openChart(page);
+      await page.locator('[data-context="season"]').click();
+      await settled(page);
+      const position = await page.locator('#chart-panel').evaluate(async (panel) => {
+        const before = panel.getBoundingClientRect();
+        panel.querySelector('[data-close-panel]').click();
+        await new Promise(queueMicrotask);
+        const after = panel.getBoundingClientRect();
+        return { before: { x: before.x, y: before.y }, after: { x: after.x, y: after.y } };
+      });
+      assert.ok(Math.abs(position.before.x - position.after.x) < .5);
+      assert.ok(Math.abs(position.before.y - position.after.y) < .5);
+      await settled(page);
+    });
+
+    check('wheel input takes control of a reading scroll immediately', async (page) => {
+      await openChart(page);
+      await page.locator('[data-context="season"]').click();
+      await settled(page);
+      const state = await page.locator('#chart-panel').evaluate((panel) => {
+        window.EC_MOTION.scroll(panel, 0, 250);
+        const moving = window.EC_MOTION.value(panel, 'scroll') !== null;
+        panel.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: 40 }));
+        return { moving, stopped: window.EC_MOTION.value(panel, 'scroll') === null };
+      });
+      assert.equal(state.moving, true);
+      assert.equal(state.stopped, true);
+    });
+
     check('changing language updates the same birth without replaying pillar entrances', async (page) => {
       await openChart(page);
       await page.locator('#chart-language [data-lang="fi"]').click();
