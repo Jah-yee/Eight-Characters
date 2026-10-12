@@ -1281,6 +1281,7 @@ document.addEventListener('DOMContentLoaded', () => {
     else hideCardHint();
   };
   const aboveCards = new ResizeObserver(followCardHint);
+  motion.onFrame(followCardHint);
   ['.chart-bar', '#day-master-context', '#luck-ribbon'].forEach((selector) => aboveCards.observe(chartView.querySelector(selector)));
   aboveCards.observe(pillarsContainer);
   pillarsContainer.addEventListener('pointerover', (event) => {
@@ -1310,12 +1311,12 @@ document.addEventListener('DOMContentLoaded', () => {
       angle: card.classList.contains('is-flipped') ? 180 : 0,
       height: inner.offsetHeight,
     };
-    from.height = inner.offsetHeight;
+    from.height = Number.parseFloat(getComputedStyle(inner).height);
     card.classList.remove('is-turning');
     inner.style.height = '';
     const flipped = card.classList.toggle('is-flipped');
     labelCard(card);
-    const height = inner.offsetHeight;
+    const height = Number.parseFloat(getComputedStyle(inner).height);
     card.classList.add('is-turning');
     motion.spring(inner, 'flip', {
       from, to: { angle: flipped ? 180 : 0, height }, rebase: true,

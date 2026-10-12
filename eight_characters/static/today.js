@@ -90,6 +90,7 @@
     // The press on the days being followed, if any (the gestures are below).
     let drag = null;
     const dropDrag = () => {
+      if (drag?.moving) releaseDays();
       drag = null;
       days.classList.remove('is-dragging');
       days.style.removeProperty('--drag');
@@ -99,6 +100,7 @@
     // nothing, though another run is drawn before it ends.
     const cancelDrag = () => {
       if (drag === null) return;
+      if (drag.moving) releaseDays();
       drag.drags = false;
       drag.moving = false;
       days.classList.remove('is-dragging');
@@ -343,10 +345,17 @@
     // from a step beyond. ──
     const dayNodes = new Map();
     const placeDay = (node, place) => {
-      const before = new DOMMatrix(getComputedStyle(node).transform);
+      if (!node.getClientRects().length) {
+        node.dataset.place = place;
+        node.style.removeProperty('--flow-day-x'); node.style.removeProperty('--flow-day-scale');
+        return;
+      }
+      const transform = getComputedStyle(node).transform;
+      const before = transform === 'none' ? new DOMMatrix() : new DOMMatrix(transform);
       node.style.removeProperty('--flow-day-x'); node.style.removeProperty('--flow-day-scale');
       node.dataset.place = place;
-      const target = new DOMMatrix(getComputedStyle(node).transform);
+      const targetTransform = getComputedStyle(node).transform;
+      const target = targetTransform === 'none' ? new DOMMatrix() : new DOMMatrix(targetTransform);
       window.EC_MOTION.spring(node, 'day', {
         from: { x: before.e, scale: before.a }, to: { x: target.e, scale: target.a }, rebase: true,
         write: ({ x, scale }) => {
@@ -354,6 +363,15 @@
         },
         complete: () => { node.style.removeProperty('--flow-day-x'); node.style.removeProperty('--flow-day-scale'); },
       });
+    };
+    const releaseDays = () => {
+      const poses = [...dayNodes.values()].filter((node) => node.getClientRects().length)
+        .map((node) => [node, new DOMMatrix(getComputedStyle(node).transform)]);
+      days.style.removeProperty('--drag');
+      for (const [node, pose] of poses) {
+        node.style.setProperty('--flow-day-x', `${pose.e}px`); node.style.setProperty('--flow-day-scale', String(pose.a));
+        placeDay(node, node.dataset.place);
+      }
     };
     const dayMarkup = (day) => `${cards(day.pillar, 'large')}
       <span class="today-day-when"><span class="today-day-weekday">${esc(weekdayOf(day.date))}</span>
@@ -995,6 +1013,7 @@
         }
         if (!drag.drags || Math.abs(dx) < DRAG) return;
         drag.moving = true;
+        dayNodes.forEach((node) => window.EC_MOTION.cancel(node, 'day'));
         daysTrack.setPointerCapture(drag.id);
         days.classList.add('is-dragging');
       }

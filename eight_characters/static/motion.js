@@ -7,6 +7,7 @@
   const channels = new WeakMap();
   const panelStates = new WeakMap();
   const moving = new Set();
+  const frameListeners = new Set();
   let frame = 0;
   let previousTime = 0;
   const clamp = (value) => Math.max(0, Math.min(1, value));
@@ -52,6 +53,7 @@
         complete(channel);
       } else channel.write({ ...channel.value });
     }
+    frameListeners.forEach((listener) => listener());
     frame = moving.size ? requestAnimationFrame(tick) : 0;
   };
 
@@ -240,8 +242,9 @@
   // Semantic surfaces enter as one unit. Updating a reading does not replay a
   // chart's entrance, and focus/selection changes never trigger decorative motion.
   document.addEventListener('DOMContentLoaded', () => {
-    const scenes = '#input-view, #chart-view, #today-view, #settings-view, #compare-view, '
-      + '#account-start, #account-code-form, #account-menu, .life, .luck-ribbon';
+    const scenes = '#input-view, #chart-view, #today-view, #today-body, #settings-view, #compare-view, '
+      + '#account-start, #account-code-step, #account-menu, .life, .luck-ribbon, '
+      + '#location-suggestions, #settings-location-suggestions';
     const contents = '#context-detail, #pillar-detail, #luck-detail, #relationship-detail, '
       + '#today-detail, #today-scale, #today-pillars, #today-couple, #today-in-chart, #today-hours, '
       + '#settings-mine-body, #settings-couples-body, #settings-charts-body, #library-list, '
@@ -258,9 +261,19 @@
           scenesSeen.add(element);
           const wasHidden = (record.oldValue || '').split(/\s+/).includes('hidden');
           if (wasHidden && !element.classList.contains('hidden')
-            && !(element.id === 'chart-view' && document.documentElement.classList.contains('is-embedded'))) reveal(element);
+            && !(element.id === 'chart-view' && document.documentElement.classList.contains('is-embedded'))) {
+            const surface = ['chart-view', 'today-view'].includes(element.id)
+              ? element.querySelector(':scope > .chart-column') : element;
+            if (!surface) throw new Error(`Natural flow has no surface for ${element.id}.`);
+            reveal(surface);
+          }
         }
         if (record.type === 'childList') {
+          for (const node of record.addedNodes) {
+            if (node instanceof Element && node.matches('.relationship-arcs, .luck-arcs') && node.getClientRects().length) {
+              reveal(node, { distance: 0, delay: Number.parseFloat(css.getPropertyValue('--flow-settle')) / 3 });
+            }
+          }
           const surface = element.closest(contents);
           if (surface) changed.add(surface);
         }
@@ -293,5 +306,6 @@
   preference.addEventListener('change', () => { if (preference.matches) finish(); });
   window.addEventListener('beforeprint', finish);
   window.EC_MOTION = Object.freeze({ model, spring, value, cancel, disclose, reveal, layout, scroll, panel, retire, finish,
+    onFrame: (listener) => { frameListeners.add(listener); return () => frameListeners.delete(listener); },
     reduced: () => preference.matches, active: () => moving.size > 0 });
 })();

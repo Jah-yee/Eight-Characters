@@ -9,7 +9,9 @@
 .hidden-stems-panel, .hidden-stems-panel.is-expanded { transition: none; }
 [data-flow-disclosure] { overflow: hidden; box-sizing: border-box; }
 .toast { transition: none; }
-.pillar, .pillar:nth-child(n), .pillar-arcs { animation: none; }
+.pillar, .pillar:nth-child(n), .relationship-arcs, .luck-arcs { animation: none; }
+.field-status { opacity: 1; transition: opacity var(--flow-feedback) var(--flow-feedback-ease); }
+.field-status:empty { opacity: 0; }
 /* Native dialog close semantics stay immediate; discrete display/overlay transitions
    keep only the visual exit alive, without delaying focus or request cancellation. */
 dialog {
