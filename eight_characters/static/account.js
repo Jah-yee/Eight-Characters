@@ -234,7 +234,9 @@
     };
     // Deleting the account starts closed, and empty, each time.
     const closeDeleting = () => {
-      deleteForm.classList.add('hidden');
+      deleteForm.hidden = true;
+      deleteForm.classList.remove('hidden');
+      window.EC_MOTION.disclose(deleteForm, false, false);
       deleteOpen.setAttribute('aria-expanded', 'false');
       deleteEmail.value = '';
       setStatus(deleteStatus, '');
@@ -691,8 +693,8 @@
     }));
 
     deleteOpen.addEventListener('click', () => {
-      const opening = deleteForm.classList.contains('hidden');
-      deleteForm.classList.toggle('hidden', !opening);
+      const opening = deleteOpen.getAttribute('aria-expanded') !== 'true';
+      window.EC_MOTION.disclose(deleteForm, opening, true, () => { deleteForm.hidden = !opening; });
       deleteOpen.setAttribute('aria-expanded', String(opening));
       if (opening) deleteEmail.focus();
     });

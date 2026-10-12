@@ -36,10 +36,14 @@
       document.title = t('compare_page_title', { first: heading(pair.a), second: heading(pair.b) });
     };
     const showSide = (side) => {
+      const changed = charts.dataset.shown !== side;
       charts.dataset.shown = side;
       shownSwitch.querySelectorAll('button[data-compare-side]').forEach((button) => {
         button.setAttribute('aria-pressed', String(button.dataset.compareSide === side));
       });
+      if (changed && window.innerWidth < 900 && frames[side]?.getClientRects().length) {
+        window.EC_MOTION.reveal(frames[side]);
+      }
     };
     const pressLanguage = (lang) => {
       languageSwitch.querySelectorAll('button[data-compare-lang]').forEach((button) => {

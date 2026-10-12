@@ -364,6 +364,7 @@
       const part = button.closest('.canon-line').dataset.canonPart;
       if (next) open.add(part); else open.delete(part);
     };
+    let arrivalTimer = 0;
     // Brings a page's line into view and marks it a moment; `openIt` opens it too.
     const arrive = (section, part, openIt = false) => {
       const target = section.querySelector(`.canon-line[data-canon-part="${part}"]`);
@@ -372,8 +373,9 @@
       const top = target.getBoundingClientRect().top - panel.getBoundingClientRect().top + panel.scrollTop;
       window.EC_MOTION.scroll(panel, panel.scrollLeft, Math.max(0, top - panel.clientHeight / 8));
       root.querySelectorAll('.canon-line.is-arrived').forEach((node) => node.classList.remove('is-arrived'));
-      void target.offsetWidth;
+      clearTimeout(arrivalTimer);
       target.classList.add('is-arrived');
+      arrivalTimer = setTimeout(() => target.classList.remove('is-arrived'), 1400);
       return target;
     };
     panel.addEventListener('click', (event) => {

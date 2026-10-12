@@ -3011,13 +3011,9 @@ kbd {
 .canon-ring-on { fill: var(--ink-1); }
 
 /* The line a link just turned to, for a moment; without motion, it holds and goes. */
-@keyframes canon-arrive {
-  from { background: var(--surface-3); }
-  to { background: transparent; }
-}
-.canon-line.is-arrived { animation: canon-arrive 1.4s ease-out; }
+.canon-line { transition: background var(--flow-feedback) var(--flow-feedback-ease); }
+.canon-line.is-arrived { background: var(--surface-3); }
 @media (prefers-reduced-motion: reduce) {
-  .canon-line.is-arrived { animation-timing-function: steps(1, end); }
   .canon-day-master-line, .canon-line-chevron, .canon-link { transition: none; }
 }
 @media (max-width: 640px) {
