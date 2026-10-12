@@ -112,6 +112,9 @@
   };
 
   const disclose = (element, open, animate = true, after = null) => {
+    const from = { height: element.hidden ? 0 : element.getBoundingClientRect().height,
+      opacity: element.hidden ? 0 : Number(getComputedStyle(element).opacity) };
+    if (open) element.hidden = false;
     element.setAttribute('data-flow-disclosure', '');
     element.inert = !open;
     if (!animate) {
@@ -122,7 +125,7 @@
       return;
     }
     spring(element, 'disclosure', {
-      from: { height: element.getBoundingClientRect().height, opacity: Number(getComputedStyle(element).opacity) },
+      from,
       to: { height: open ? element.scrollHeight : 0, opacity: open ? 1 : 0 },
       write: ({ height, opacity }) => {
         element.style.height = `${Math.max(0, height)}px`;
@@ -179,6 +182,16 @@
     write: (next) => { element.scrollLeft = next.left; element.scrollTop = next.top; },
     complete: () => cancel(element, 'scroll'),
   });
+  const interruptScroll = (event) => {
+    if (event.type === 'keydown' && !['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) return;
+    for (const channel of [...moving]) {
+      if (channels.get(channel.owner)?.get('scroll') === channel && channel.owner.contains(event.target)) {
+        cancel(channel.owner, 'scroll');
+      }
+    }
+  };
+  ['wheel', 'pointerdown', 'touchstart'].forEach((type) => document.addEventListener(type, interruptScroll, { capture: true, passive: true }));
+  document.addEventListener('keydown', interruptScroll, true);
 
   const retire = (element) => {
     queueMicrotask(() => {
@@ -213,7 +226,10 @@
       element.removeAttribute('data-flow-leaving'); element.classList.remove('hidden');
       state.box = element.getBoundingClientRect();
     } else {
-      const box = state.box ?? element.getBoundingClientRect();
+      const current = element.getBoundingClientRect();
+      const box = { left: current.left - Number.parseFloat(element.style.getPropertyValue('--flow-enter-x') || '0'),
+        top: current.top - Number.parseFloat(element.style.getPropertyValue('--flow-enter-y') || '0'),
+        width: current.width, height: state.box === null ? current.height : state.box.height };
       state.saved ??= Object.fromEntries(['position', 'left', 'top', 'right', 'bottom', 'width', 'height', 'margin']
         .map((key) => [key, element.style[key]]));
       element.setAttribute('data-flow-leaving', '');
@@ -225,11 +241,13 @@
       from: { progress: open ? 0 : 1 }, to: { progress: open ? 1 : 0 },
       write: ({ progress }) => {
         element.style.opacity = String(clamp(progress));
-        element.style.setProperty('--flow-enter-y', `${(1 - progress) * model.travel}px`);
+        const horizontal = window.innerWidth >= 1200;
+        element.style.setProperty('--flow-enter-x', `${horizontal ? (1 - progress) * model.travel : 0}px`);
+        element.style.setProperty('--flow-enter-y', `${horizontal ? 0 : (1 - progress) * model.travel}px`);
         element.setAttribute('data-flow-enter', '');
       },
       complete: () => {
-        element.style.opacity = ''; element.style.removeProperty('--flow-enter-y'); element.removeAttribute('data-flow-enter');
+        element.style.opacity = ''; element.style.removeProperty('--flow-enter-y'); element.style.removeProperty('--flow-enter-x'); element.removeAttribute('data-flow-enter');
         if (!open) {
           element.removeAttribute('data-flow-leaving'); Object.assign(element.style, state.saved); state.saved = null;
           for (const child of state.retired) { child.removeAttribute('data-flow-retain'); child.replaceChildren(); }
@@ -248,7 +266,7 @@
     const contents = '#context-detail, #pillar-detail, #luck-detail, #relationship-detail, '
       + '#today-detail, #today-scale, #today-pillars, #today-couple, #today-in-chart, #today-hours, '
       + '#settings-mine-body, #settings-couples-body, #settings-charts-body, #library-list, '
-      + '#params-body, #legend-panel, #inspector-panel';
+      + '#parameterPane, #legendPanel, #inspectorContent';
     const previous = new WeakMap();
     document.querySelectorAll(contents).forEach((element) => previous.set(element, element.innerHTML));
     const observer = new MutationObserver((records) => {

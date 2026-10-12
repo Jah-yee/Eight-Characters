@@ -1216,6 +1216,7 @@
     zoomBehavior = d3
       .zoom()
       .scaleExtent([0.2, 5])
+      .on('start', (event) => { if (event.sourceEvent) window.EC_MOTION.cancel(svg.node(), 'zoom'); })
       .on('zoom', (event) => {
         rootGroup.attr('transform', event.transform);
       });

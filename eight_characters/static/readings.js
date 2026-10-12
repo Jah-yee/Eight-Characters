@@ -360,7 +360,6 @@
       button.setAttribute('aria-expanded', String(next));
       const passage = root.querySelector(`#${button.getAttribute('aria-controls')}`);
       if (!passage) fail('a passage');
-      passage.hidden = false;
       window.EC_MOTION.disclose(passage, next, true, () => { passage.hidden = !next; });
       const part = button.closest('.canon-line').dataset.canonPart;
       if (next) open.add(part); else open.delete(part);
