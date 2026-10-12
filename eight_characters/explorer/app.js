@@ -151,6 +151,7 @@
   let pulseSel;
   let simulation;
   let zoomBehavior;
+  let applyingFit = false;
   let fluxScale;
   let width = 0;
   let height = 0;
@@ -1218,6 +1219,7 @@
       .scaleExtent([0.2, 5])
       .on('start', (event) => { if (event.sourceEvent) window.EC_MOTION.cancel(svg.node(), 'zoom'); })
       .on('zoom', (event) => {
+        if (event.sourceEvent && !applyingFit) window.EC_MOTION.cancel(svg.node(), 'zoom');
         rootGroup.attr('transform', event.transform);
       });
     svg.call(zoomBehavior);
@@ -2064,7 +2066,11 @@
     const current = d3.zoomTransform(svg.node());
     window.EC_MOTION.spring(svg.node(), 'zoom', {
       from: { x: current.x, y: current.y, k: current.k }, to: { x: transform.x, y: transform.y, k: transform.k }, rebase: true,
-      write: ({ x, y, k }) => svg.call(zoomBehavior.transform, d3.zoomIdentity.translate(x, y).scale(k)),
+      write: ({ x, y, k }) => {
+        applyingFit = true;
+        try { svg.call(zoomBehavior.transform, d3.zoomIdentity.translate(x, y).scale(k)); }
+        finally { applyingFit = false; }
+      },
     });
   }
 
