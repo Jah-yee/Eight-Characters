@@ -113,15 +113,20 @@
   };
 
   const disclose = (element, open, animate = true, after = null) => {
-    if (!disclosureStyles.has(element)) disclosureStyles.set(element, { paddingBottom: element.style.paddingBottom });
+    if (!disclosureStyles.has(element)) disclosureStyles.set(element, {
+      paddingTop: element.style.paddingTop, paddingBottom: element.style.paddingBottom,
+    });
     const original = disclosureStyles.get(element);
     const from = { height: element.hidden ? 0 : element.getBoundingClientRect().height,
       opacity: element.hidden ? 0 : Number(getComputedStyle(element).opacity),
+      paddingTop: element.hidden ? 0 : Number.parseFloat(getComputedStyle(element).paddingTop),
       padding: element.hidden ? 0 : Number.parseFloat(getComputedStyle(element).paddingBottom) };
     if (open) element.hidden = false;
+    element.style.paddingTop = original.paddingTop;
     element.style.paddingBottom = original.paddingBottom;
     element.style.height = 'auto';
     const natural = { height: element.getBoundingClientRect().height,
+      paddingTop: Number.parseFloat(getComputedStyle(element).paddingTop),
       padding: Number.parseFloat(getComputedStyle(element).paddingBottom) };
     element.setAttribute('data-flow-disclosure', '');
     element.inert = !open;
@@ -135,13 +140,16 @@
     }
     spring(element, 'disclosure', {
       from,
-      to: { height: open ? natural.height : 0, opacity: open ? 1 : 0, padding: open ? natural.padding : 0 },
-      write: ({ height, opacity, padding }) => {
+      to: { height: open ? natural.height : 0, opacity: open ? 1 : 0,
+        paddingTop: open ? natural.paddingTop : 0, padding: open ? natural.padding : 0 },
+      write: ({ height, opacity, paddingTop, padding }) => {
         element.style.height = `${Math.max(0, height)}px`;
+        element.style.paddingTop = `${Math.max(0, paddingTop)}px`;
         element.style.paddingBottom = `${Math.max(0, padding)}px`;
         element.style.opacity = String(clamp(opacity));
       },
-      complete: () => { element.style.height = open ? 'auto' : '0px'; element.style.paddingBottom = original.paddingBottom;
+      complete: () => { element.style.height = open ? 'auto' : '0px';
+        element.style.paddingTop = original.paddingTop; element.style.paddingBottom = original.paddingBottom;
         element.removeAttribute('data-flow-disclosure'); after?.(); },
     });
   };
