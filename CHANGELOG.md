@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.51.1
+
+### Fixed
+- Location confirmation reserves its wrapped text's space before selection, keeping
+  the landing page's input row still when a place is selected or cleared.
+- Location details use the same quiet grey in the landing page, Settings and every
+  place search, in light and dark themes. Errors keep their distinct colour.
+
 ## 0.51.0
 
 The new Today (#80): the day in the chart's own cards and colours (#77, slice 3).
