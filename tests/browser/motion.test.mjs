@@ -39,6 +39,32 @@ for (const profile of profiles) {
       assert.equal(await page.locator('#hidden-stems-hour').evaluate((panel) => panel.getBoundingClientRect().height), 0);
     });
 
+    check('a global card flip lands without a shared-row height jump', async (page) => {
+      await openChart(page);
+      const jump = await page.evaluate(() => new Promise((resolve) => {
+        const inners = [...document.querySelectorAll('#pillars .card-inner')];
+        const heights = new Map(inners.map((inner) => [inner, Number.parseFloat(getComputedStyle(inner).height)]));
+        const landed = new Set();
+        let jump = 0;
+        document.querySelector('[data-display="ten-gods"]').click();
+        const sample = () => {
+          for (const inner of inners) {
+            const height = Number.parseFloat(getComputedStyle(inner).height);
+            if (inner.style.height === '' && !landed.has(inner)) {
+              landed.add(inner);
+              jump = Math.max(jump, Math.abs(height - heights.get(inner)));
+            }
+            heights.set(inner, height);
+          }
+          if (landed.size === inners.length) { resolve(jump); return; }
+          requestAnimationFrame(sample);
+        };
+        requestAnimationFrame(sample);
+      }));
+      assert.ok(jump < 2, `The global flip jumped ${jump}px when intrinsic sizing resumed.`);
+      await settled(page);
+    });
+
     check('a panel makes room without jumping the chart and can reverse immediately', async (page) => {
       await openChart(page);
       const shift = await page.evaluate(async () => {
