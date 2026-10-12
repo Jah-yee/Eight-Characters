@@ -2323,6 +2323,7 @@ body {
 .chart-panel {
   container: panel / inline-size;
   background: var(--bg);
+  scrollbar-gutter: stable;
 }
 .chart-panel-body { display: flow-root; }
 .chart-panel-bar {

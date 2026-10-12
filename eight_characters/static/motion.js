@@ -321,7 +321,7 @@
         const edges = ['paddingTop', 'paddingBottom', 'borderTopWidth', 'borderBottomWidth']
           .reduce((height, key) => height + Number.parseFloat(style[key]), 0);
         const height = Number.parseFloat(getComputedStyle(body).height) + edges;
-        return { height: Math.min(height, style.maxHeight === 'none' ? Infinity : Number.parseFloat(style.maxHeight)) };
+        return { height: Math.max(edges, Math.min(height, style.maxHeight === 'none' ? Infinity : Number.parseFloat(style.maxHeight))) };
       };
       const targetHeight = destination().height;
       if (Math.abs(targetHeight - fromHeight) > .5 || value(element, 'panel-size') !== null) {
