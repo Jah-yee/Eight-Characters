@@ -169,11 +169,23 @@
   const layout = (root, change, selector = ':scope > *') => {
     const elements = [...root.querySelectorAll(selector)];
     const identity = (element) => element.dataset.flowKey ?? element;
-    const before = new Map(elements.map((element) => [identity(element), element.getBoundingClientRect()]));
+    const before = new Map(elements.map((element) => [identity(element), { element, box: element.getBoundingClientRect() }]));
     const result = change();
     for (const element of root.querySelectorAll(selector)) {
-      const old = before.get(identity(element));
-      if (!old || !old.width || !old.height) continue;
+      const previous = before.get(identity(element));
+      if (!previous || !previous.box.width || !previous.box.height) continue;
+      const old = previous.box;
+      // A replaced actor keeps its identity's live momentum (comparison frames
+      // reload when reordered, so moving the old DOM node is not an option).
+      const channel = channels.get(previous.element)?.get('layout');
+      if (previous.element !== element && channel?.active) {
+        channels.get(previous.element).delete('layout');
+        mark(previous.element);
+        let own = channels.get(element);
+        if (!own) { own = new Map(); channels.set(element, own); }
+        channel.owner = element;
+        own.set('layout', channel);
+      }
       element.removeAttribute('data-flow-layout');
       ['x', 'y', 'sx', 'sy'].forEach((key) => element.style.removeProperty(`--flow-layout-${key}`));
       const next = element.getBoundingClientRect();
