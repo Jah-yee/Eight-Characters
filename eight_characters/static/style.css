@@ -42,7 +42,7 @@
   /* Ink: text, and the secondary ink of labels and notes. Both meet WCAG AA
      (4.5:1) on the page and on every element-tinted panel; de-emphasis comes
      from size, case and tracking, not from lightness. The third is for
-     placeholders. */
+     placeholders and quieter location details. */
   --ink-1: #2A2520;
   --ink-2: #655F58;
   --ink-3: rgba(42, 37, 32, 0.65);
