@@ -220,7 +220,7 @@
   const panel = (element, open) => {
     let state = panelStates.get(element);
     if (!state) {
-      state = { open: false, box: null, retired: new Set(), saved: null };
+      state = { open: false, box: null, retired: new Set(), saved: null, originalHeight: element.style.height };
       panelStates.set(element, state);
       new ResizeObserver(() => {
         if (state.open && !element.closest('.hidden')) state.box = element.getBoundingClientRect();
@@ -241,7 +241,10 @@
       }
       return;
     }
+    const sizing = value(element, 'panel-size');
+    const heldHeight = sizing === null ? null : element.getBoundingClientRect().height;
     cancel(element, 'panel-size');
+    element.style.height = state.originalHeight;
     state.open = open;
     element.inert = !open;
     if (open) {
@@ -257,7 +260,7 @@
       const current = element.getBoundingClientRect();
       const box = { left: current.left - Number.parseFloat(element.style.getPropertyValue('--flow-enter-x') || '0'),
         top: current.top - Number.parseFloat(element.style.getPropertyValue('--flow-enter-y') || '0'),
-        width: current.width, height: state.box === null ? current.height : state.box.height };
+        width: current.width, height: heldHeight ?? (state.box === null ? current.height : state.box.height) };
       state.saved ??= Object.fromEntries(['position', 'left', 'top', 'right', 'bottom', 'width', 'height', 'margin']
         .map((key) => [key, element.style[key]]));
       element.setAttribute('data-flow-leaving', '');
