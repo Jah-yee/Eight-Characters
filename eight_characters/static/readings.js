@@ -370,8 +370,10 @@
       const target = section.querySelector(`.canon-line[data-canon-part="${part}"]`);
       if (!target) return null;
       if (openIt) toggle(target.querySelector('.canon-line-toggle'), true);
-      const top = target.getBoundingClientRect().top - panel.getBoundingClientRect().top + panel.scrollTop;
-      window.EC_MOTION.scroll(panel, panel.scrollLeft, Math.max(0, top - panel.clientHeight / 8));
+      window.EC_MOTION.scroll(panel, panel.scrollLeft, () => Math.max(0,
+        target.getBoundingClientRect().top - panel.getBoundingClientRect().top + panel.scrollTop - panel.clientHeight / 8), {
+        pending: () => openIt && window.EC_MOTION.value(target.querySelector('.canon-line-passage'), 'disclosure') !== null,
+      });
       root.querySelectorAll('.canon-line.is-arrived').forEach((node) => node.classList.remove('is-arrived'));
       clearTimeout(arrivalTimer);
       target.classList.add('is-arrived');

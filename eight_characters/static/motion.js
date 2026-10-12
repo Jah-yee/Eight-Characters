@@ -24,6 +24,17 @@
     mark(channel.owner);
     channel.complete?.();
   };
+  const refreshTarget = (channel) => {
+    if (!channel.resolveTarget) return;
+    const next = channel.resolveTarget();
+    for (const key of Object.keys(next)) {
+      if (!Number.isFinite(next[key]) || !Number.isFinite(channel.value[key])) {
+        throw new Error(`Natural flow received a non-finite ${channel.name}.${key}.`);
+      }
+      channel.range[key] = Math.max(channel.range[key], Math.abs(next[key] - channel.value[key]), 1);
+    }
+    channel.target = { ...next };
+  };
   const tick = (now) => {
     const elapsed = Math.min((now - previousTime) / 1000, .032);
     previousTime = now;
@@ -37,6 +48,7 @@
         continue;
       }
       if (now < channel.start) continue;
+      refreshTarget(channel);
       let resting = true;
       for (const key of Object.keys(channel.target)) {
         for (let step = 0; step < steps; step++) {
@@ -48,7 +60,7 @@
         if (Math.abs(channel.value[key] - channel.target[key]) > range * .0008
           || Math.abs(channel.velocity[key]) > range * .008) resting = false;
       }
-      if (resting) {
+      if (resting && channel.canComplete()) {
         Object.assign(channel.value, channel.target);
         Object.keys(channel.velocity).forEach((key) => { channel.velocity[key] = 0; });
         complete(channel);
@@ -58,31 +70,34 @@
     frame = moving.size ? requestAnimationFrame(tick) : 0;
   };
 
-  const spring = (owner, name, { from, to, write, complete: done, delay = 0, rebase = false }) => {
+  const spring = (owner, name, { from, to, write, complete: done, delay = 0, rebase = false, canComplete = () => true }) => {
+    const target = typeof to === 'function' ? to() : to;
     let own = channels.get(owner);
     if (!own) { own = new Map(); channels.set(owner, own); }
     let channel = own.get(name);
     if (!channel) {
-      channel = { owner, value: { ...from }, velocity: {}, range: {}, active: false };
+      channel = { owner, name, value: { ...from }, velocity: {}, range: {}, active: false };
       own.set(name, channel);
     } else if (!channel.active) {
       channel.value = { ...from };
       channel.velocity = {};
     } else if (rebase) Object.assign(channel.value, from);
-    for (const key of Object.keys(to)) {
-      if (!Number.isFinite(to[key]) || !Number.isFinite(channel.value[key])) {
+    for (const key of Object.keys(target)) {
+      if (!Number.isFinite(target[key]) || !Number.isFinite(channel.value[key])) {
         throw new Error(`Natural flow received a non-finite ${name}.${key}.`);
       }
       channel.velocity[key] ??= 0;
-      channel.range[key] = Math.max(1, Math.abs(to[key] - channel.value[key]));
+      channel.range[key] = Math.max(1, Math.abs(target[key] - channel.value[key]));
     }
-    channel.target = { ...to };
+    channel.target = { ...target };
+    channel.resolveTarget = typeof to === 'function' ? to : null;
+    channel.canComplete = canComplete;
     channel.write = write;
     channel.complete = done;
     channel.start = performance.now() + delay;
     channel.active = true;
     if (preference.matches) {
-      Object.assign(channel.value, to);
+      Object.assign(channel.value, target);
       Object.keys(channel.velocity).forEach((key) => { channel.velocity[key] = 0; });
       complete(channel);
       return;
@@ -105,7 +120,10 @@
     mark(owner);
   };
   const finish = () => {
-    for (const channel of [...moving]) {
+    // Scroll destinations depend on the final sizes of their disclosures and panels.
+    const ordered = [...moving].sort((a, b) => Number(a.name === 'scroll') - Number(b.name === 'scroll'));
+    for (const channel of ordered) {
+      refreshTarget(channel);
       Object.assign(channel.value, channel.target);
       Object.keys(channel.velocity).forEach((key) => { channel.velocity[key] = 0; });
       complete(channel);
@@ -226,21 +244,25 @@
     }
     return result;
   };
-  const scroll = (element, left, top = element.scrollTop) => {
+  const scroll = (element, left, top = element.scrollTop, { pending = () => false } = {}) => {
     const bounded = (value, maximum) => Math.max(0, Math.min(maximum, value));
     const bounds = () => ({ left: Math.max(0, element.scrollWidth - element.clientWidth),
       top: Math.max(0, element.scrollHeight - element.clientHeight) });
-    const maximum = bounds();
     spring(element, 'scroll', {
       from: { left: element.scrollLeft, top: element.scrollTop }, rebase: true,
-      to: { left: bounded(left, maximum.left), top: bounded(top, maximum.top) },
+      to: () => {
+        const maximum = bounds();
+        const requestedTop = typeof top === 'function' ? top() : top;
+        if (!Number.isFinite(left) || !Number.isFinite(requestedTop)) throw new Error('Natural flow received a non-finite scroll destination.');
+        return { left: bounded(left, maximum.left), top: bounded(requestedTop, maximum.top) };
+      },
+      canComplete: () => !pending(),
       write: (next) => {
         const maximum = bounds();
         const channel = channels.get(element).get('scroll');
         for (const key of ['left', 'top']) {
           const position = bounded(next[key], maximum[key]);
           if (position !== next[key]) { channel.value[key] = position; channel.velocity[key] = 0; }
-          channel.target[key] = bounded(channel.target[key], maximum[key]);
           element[key === 'left' ? 'scrollLeft' : 'scrollTop'] = position;
         }
       },
@@ -283,7 +305,15 @@
       const targetHeight = element.getBoundingClientRect().height;
       if (Math.abs(targetHeight - fromHeight) > .5 || value(element, 'panel-size') !== null) {
         spring(element, 'panel-size', {
-          from: { height: fromHeight }, to: { height: targetHeight },
+          from: { height: fromHeight },
+          to: () => {
+            const held = element.style.height;
+            element.style.height = state.originalHeight;
+            const height = element.getBoundingClientRect().height;
+            element.style.height = held;
+            return { height };
+          },
+          canComplete: () => !element.querySelector('[data-flow-disclosure]'),
           write: ({ height }) => { element.style.height = `${Math.max(0, height)}px`; },
           complete: () => { element.style.height = state.originalHeight; state.box = element.getBoundingClientRect(); cancel(element, 'panel-size'); },
         });
@@ -300,6 +330,7 @@
     element.style.height = state.originalHeight;
     state.open = open;
     element.inert = !open;
+    if (!open) cancel(element, 'scroll');
     if (open) {
       for (const child of state.retired) {
         child.removeAttribute('data-flow-retain');

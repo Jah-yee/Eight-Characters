@@ -258,6 +258,30 @@ for (const profile of profiles) {
       await settled(page);
     });
 
+    check('a canon link follows its expanding passage into the viewport', async (page) => {
+      await openChart(page);
+      await page.setViewportSize({ width: profile.viewport.width, height: 650 });
+      await page.locator('.canon-day-master-line').click();
+      await page.locator('#context-detail .canon-line[data-canon-part="dm-cycle"] .canon-line-toggle').click();
+      await settled(page);
+      const link = page.locator('#context-detail .canon-clause[data-canon-go="pillar/day#stage"]');
+      await link.scrollIntoViewIfNeeded();
+      const initialMaximum = await link.evaluate((button) => {
+        button.click();
+        const panel = document.querySelector('#chart-panel');
+        return Math.max(0, panel.scrollHeight - panel.clientHeight);
+      });
+      await settled(page);
+      const position = await page.locator('#chart-panel').evaluate((panel) => {
+        const line = panel.querySelector('#pillar-detail .canon-line[data-canon-part="stage"]');
+        const top = line.getBoundingClientRect().top - panel.getBoundingClientRect().top + panel.scrollTop;
+        const maximum = panel.scrollHeight - panel.clientHeight;
+        return { actual: panel.scrollTop, maximum, expected: Math.min(maximum, Math.max(0, top - panel.clientHeight / 8)) };
+      });
+      assert.ok(position.maximum > initialMaximum + 1, 'the opened passage grows the native scroll range');
+      assert.ok(Math.abs(position.actual - position.expected) < 1);
+    });
+
     check('the first reading disclosure starts with no height or padding jump', async (page) => {
       await openChart(page);
       await page.locator('.pillar-identity[data-pillar="hour"]').click();
