@@ -263,6 +263,7 @@
       if (!VIEWS.includes(next)) throw new Error(t('luck_error'));
       view = next;
       section.classList.toggle('is-only', view === 'pillars');
+      window.EC_MOTION.reveal(body, { distance: 8 });
       switcher.querySelectorAll('[data-life-view]').forEach((button) => {
         button.setAttribute('aria-pressed', String(button.dataset.lifeView === view));
       });

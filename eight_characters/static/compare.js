@@ -54,7 +54,7 @@
 
     // A new frame for each chart: a frame's first page replaces its blank one, so it adds
     // nothing to the history.
-    const show = (a, b, lang) => {
+    const show = (a, b, lang, keys = { a: 'a', b: 'b' }) => {
       hide();
       pair = { a, b };
       language = lang;
@@ -62,6 +62,7 @@
         const frame = document.createElement('iframe');
         frame.className = 'compare-frame';
         frame.dataset.side = side;
+        frame.dataset.flowKey = keys[side];
         frame.src = `${location.pathname}?embed=1#chart?${pair[side]}`;
         charts.append(frame);
         frames[side] = frame;
@@ -142,7 +143,8 @@
       const lang = await whenReady();
       if (lang === null) return;
       const shown = charts.dataset.shown === 'a' ? 'b' : 'a';
-      show(inLanguage(pair.b, lang), inLanguage(pair.a, lang), lang);
+      const keys = { a: frames.b.dataset.flowKey, b: frames.a.dataset.flowKey };
+      window.EC_MOTION.layout(charts, () => show(inLanguage(pair.b, lang), inLanguage(pair.a, lang), lang, keys), ':scope > .compare-frame');
       showSide(shown);
       onAddress(address());
     });

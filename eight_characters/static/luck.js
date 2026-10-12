@@ -229,7 +229,7 @@
       const room = track.getBoundingClientRect();
       const box = chip.getBoundingClientRect();
       if (box.left >= room.left && box.right <= room.right) return;
-      track.scrollLeft += (box.left + box.right - room.left - room.right) / 2;
+      window.EC_MOTION.scroll(track, track.scrollLeft + (box.left + box.right - room.left - room.right) / 2);
     };
     // The track has its width once the chart is shown, and a new one with the page's.
     new ResizeObserver(reveal).observe(ribbon);
@@ -364,7 +364,7 @@
       }
       onPeriod(null);
     };
-    const drawColumn = () => {
+    const drawColumnNow = () => {
       // The part of the column that had focus, for focus to come back to it when redrawn.
       const active = document.activeElement;
       const focused = column?.contains(active)
@@ -387,6 +387,7 @@
         column.className = 'pillar is-luck';
         column.dataset.pillar = 'luck';
         pillars.append(column);
+        window.EC_MOTION.reveal(column);
       }
       pillars.classList.add('has-luck');
       // The cards are drawn for a decade, and kept as they are while it stays: choosing
@@ -423,6 +424,7 @@
       drawArcs();
       onPeriod(periodInfo());
     };
+    const drawColumn = () => window.EC_MOTION.layout(pillars, drawColumnNow, ':scope > .pillar');
     // The period standing in the chart, for the topics: the roots on its branch, what acts
     // in its phase (occurrences and relationships), how many of its roles are new to the
     // chart, and the luck pillar's cards. Null before the first decade, and while the

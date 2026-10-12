@@ -144,10 +144,11 @@
 
   const layout = (root, change, selector = ':scope > *') => {
     const elements = [...root.querySelectorAll(selector)];
-    const before = new Map(elements.map((element) => [element, element.getBoundingClientRect()]));
+    const identity = (element) => element.dataset.flowKey ?? element;
+    const before = new Map(elements.map((element) => [identity(element), element.getBoundingClientRect()]));
     const result = change();
     for (const element of root.querySelectorAll(selector)) {
-      const old = before.get(element);
+      const old = before.get(identity(element));
       if (!old || !old.width || !old.height) continue;
       element.removeAttribute('data-flow-layout');
       const next = element.getBoundingClientRect();
@@ -239,7 +240,8 @@
   // Semantic surfaces enter as one unit. Updating a reading does not replay a
   // chart's entrance, and focus/selection changes never trigger decorative motion.
   document.addEventListener('DOMContentLoaded', () => {
-    const scenes = '#input-view, #chart-view, #today-view, #settings-view, #compare-view';
+    const scenes = '#input-view, #chart-view, #today-view, #settings-view, #compare-view, '
+      + '#account-start, #account-code-form, #account-menu, .life, .luck-ribbon';
     const contents = '#context-detail, #pillar-detail, #luck-detail, #relationship-detail, '
       + '#today-detail, #today-scale, #today-pillars, #today-couple, #today-in-chart, #today-hours, '
       + '#settings-mine-body, #settings-couples-body, #settings-charts-body, #library-list, '
@@ -248,12 +250,15 @@
     document.querySelectorAll(contents).forEach((element) => previous.set(element, element.innerHTML));
     const observer = new MutationObserver((records) => {
       const changed = new Set();
+      const scenesSeen = new Set();
       for (const record of records) {
         const element = record.target;
         if (!(element instanceof Element)) continue;
-        if (record.type === 'attributes' && element.matches(scenes)) {
+        if (record.type === 'attributes' && element.matches(scenes) && !scenesSeen.has(element)) {
+          scenesSeen.add(element);
           const wasHidden = (record.oldValue || '').split(/\s+/).includes('hidden');
-          if (wasHidden && !element.classList.contains('hidden')) reveal(element);
+          if (wasHidden && !element.classList.contains('hidden')
+            && !(element.id === 'chart-view' && document.documentElement.classList.contains('is-embedded'))) reveal(element);
         }
         if (record.type === 'childList') {
           const surface = element.closest(contents);

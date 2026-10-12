@@ -631,8 +631,10 @@ document.addEventListener('DOMContentLoaded', () => {
     ].join(' · ');
     const solarTime = describeSolarTime(pillarsData.solar_time, birth);
 
+    const freshBirth = shown === null || request.date !== shown.request.date || request.time !== shown.request.time
+      || request.location.latitude !== shown.request.location.latitude || request.location.longitude !== shown.request.location.longitude;
     renderChart(chartData, Object.fromEntries(
-      ['hour', 'day', 'month', 'year'].map((name) => [name, requiredTranslation('pillar_' + name)])));
+      ['hour', 'day', 'month', 'year'].map((name) => [name, requiredTranslation('pillar_' + name)])), freshBirth && !embedded);
     // The tab stop stays on its card, or on the Year's when the chart has none such yet:
     // the luck pillar's are drawn after.
     setKeyCard(cardAt(keyCard) ?? cardAt({ pillar: 'year', component: keyCard.component }));
@@ -2659,7 +2661,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // `plainNames` are the pillars' plain names in the page language; the chart's own
 // labels are their poetic names.
-function renderChart(data, plainNames) {
+function renderChart(data, plainNames, enter = false) {
   const container = document.getElementById('pillars');
   container.innerHTML = '';
 
@@ -2670,7 +2672,6 @@ function renderChart(data, plainNames) {
     const pillar = document.createElement('div');
     pillar.className = 'pillar';
     pillar.dataset.pillar = pillarKeys[i];
-    pillar.style.animationDelay = [0.5, 0.35, 0.2, 0.05][i] + 's';
 
     // Each card is named by its pillar and its facing side (see labelCard). A branch is
     // a button: it opens its hidden stems.
@@ -2726,6 +2727,7 @@ function renderChart(data, plainNames) {
     `;
 
     container.appendChild(pillar);
+    if (enter) window.EC_MOTION.reveal(pillar, { delay: i * 22 });
   });
 }
 
