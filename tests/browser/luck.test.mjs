@@ -225,6 +225,7 @@ for (const profile of profiles) {
       assert.deepEqual(await ribbonState(page), {
         expanded: [], selected: ['5'], today: ['5'], chosenPhase: ['5/stem'], todayPhase: ['5/stem'], stop: ['5'], todayDisabled: false,
       });
+      await settled(page);
       assert.equal(await page.locator('#chart-panel').isVisible(), false);
       assert.equal(await linkPart(page, 'topic'), null);
       assert.equal(await linkPart(page, 'luck'), '5/stem');
@@ -350,6 +351,7 @@ for (const profile of profiles) {
       assert.equal((await decadePage(page)).title, '戊子 Wu Zi');
       await click(page, '[data-luck="4"]');
       assert.equal(await linkPart(page, 'topic'), null);
+      await settled(page);
       assert.equal(await page.locator('#chart-panel').isVisible(), false);
       assert.equal(await focused(page), 'chip 4');
       // The page closes; the decade still stands in the chart.
@@ -370,13 +372,16 @@ for (const profile of profiles) {
       await click(page, '[data-luck="5"]');
       await click(page, 'button[data-context="roots"]');
       assert.equal(await linkPart(page, 'topic'), 'roots');
+      await settled(page);
       assert.equal(await page.locator('#luck-detail').isVisible(), false);
       assert.deepEqual((await ribbonState(page)).expanded, []);
       await click(page, '[data-luck="5"]');
       assert.equal(await linkPart(page, 'topic'), 'luck/5/stem');
+      await settled(page);
       assert.equal(await page.locator('#context-detail').isVisible(), false);
       assert.equal(await page.locator('button[data-context="roots"]').getAttribute('aria-expanded'), 'false');
       await openRelationships(page);
+      await settled(page);
       assert.equal(await page.locator('#luck-detail').isVisible(), false);
       await click(page, '[data-luck="5"]');
       assert.equal(await page.locator('#relationships-panel').isVisible(), false);

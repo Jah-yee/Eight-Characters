@@ -1,7 +1,7 @@
 // Run with Node's built-in test runner and an explicitly selected Playwright install.
 // Stage 2 of the Standard view (#17): the chart shows what the engine computed.
 import {
-  assert, describe, it, engineName, profiles, openChart, withPage, openRelationships, HELSINKI, TROMSO,
+  assert, describe, it, settled, engineName, profiles, openChart, withPage, openRelationships, HELSINKI, TROMSO,
 } from './chart-helpers.mjs';
 
 async function identities(page) {
@@ -129,6 +129,7 @@ for (const profile of profiles) {
       const year = page.locator('.pillar-identity[data-pillar="year"]');
       assert.equal(await year.getAttribute('aria-expanded'), 'true');
       await page.keyboard.press('Escape');
+      await settled(page);
       assert.equal(await page.locator('#pillar-detail').isHidden(), true);
       assert.equal(await year.getAttribute('aria-expanded'), 'false');
       assert.equal(await year.evaluate((button) => button === document.activeElement), true);
@@ -152,14 +153,18 @@ for (const profile of profiles) {
       await page.locator('.relationship-chip').first().click();
       await page.locator('#relationship-detail').waitFor({ state: 'visible' });
       await changes(page, 'year');
+      await settled(page);
       assert.equal(await page.locator('#relationship-detail').isHidden(), true);
       await page.locator('button[data-context="season"]').click();
       await page.locator('#context-detail').waitFor({ state: 'visible' });
+      await settled(page);
       assert.equal(await page.locator('#pillar-detail').isHidden(), true);
       await changes(page, 'month');
+      await settled(page);
       assert.equal(await page.locator('#context-detail').isHidden(), true);
       // A second press closes it again.
       await page.locator('.pillar-identity[data-pillar="month"]').click();
+      await settled(page);
       assert.equal(await page.locator('#pillar-detail').isHidden(), true);
     });
 

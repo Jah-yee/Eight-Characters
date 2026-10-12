@@ -1,5 +1,5 @@
 import {
-  assert, describe, it, engineName, profiles, openChart, fillChart, count,
+  assert, describe, it, settled, engineName, profiles, openChart, fillChart, count,
   geometry, natalColors, longPress, screenshot, withPage, showDisplay, openRelationships,
 } from './chart-helpers.mjs';
 
@@ -69,16 +69,19 @@ for (const profile of profiles) {
       await openRelationships(page);
       await page.locator('.relationship-chip').click();
       await count(page, '.card.is-context-source, #pillars .is-context-evidence', 0);
+      await settled(page);
       assert.equal(await page.locator('#context-detail').isVisible(), false);
       await count(page, '.card.is-related', 2);
       for (const key of ['season', 'roots', 'roles']) {
         await page.locator(`[data-context="${key}"]`).click();
         await count(page, '.card.is-related', 0);
+        await settled(page);
         assert.equal(await page.locator('#relationship-detail').isVisible(), false);
         await count(page, '#context-controls [aria-expanded="true"]', 1);
       }
       await page.locator('[data-context="roles"]').click();
       await count(page, '.card.is-context-source, #pillars .is-context-evidence', 0);
+      await settled(page);
       assert.equal(await page.locator('#context-detail').isVisible(), false);
       assert.deepEqual(await geometry(page), before);
     });
@@ -222,6 +225,7 @@ for (const profile of profiles) {
       await page.locator('#back-btn').click();
       await fillChart(page, { date: '1990-05-09', time: '12:00' });
       await count(page, '.card.is-context-source, #pillars .is-context-evidence, .card.is-flipped', 0);
+      await settled(page);
       assert.equal(await page.locator('#context-detail').isVisible(), false);
       assert.equal(await page.locator('[data-context="roots"]').innerText(), 'No roots detected');
       assert.match(await page.locator('#day-master-heading').innerText(), /Jia — Yang Wood/);

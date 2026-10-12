@@ -1,5 +1,5 @@
 import {
-  assert, describe, it, profiles, openChart, fillChart, count,
+  assert, describe, it, settled, profiles, openChart, fillChart, count,
   geometry, natalColors, longPress, screenshot, withPage, showDisplay, openRelationships,
 } from './chart-helpers.mjs';
 
@@ -140,6 +140,7 @@ for (const profile of profiles) {
       await page.keyboard.press('Space');
       await page.keyboard.press('Escape');
       assert.equal(await page.locator('[data-context="roles"]').evaluate(n=>n===document.activeElement), true);
+      await settled(page);
       assert.equal(await page.locator('#context-detail').isVisible(), false);
     });
 
@@ -150,9 +151,11 @@ for (const profile of profiles) {
       await openRelationships(page);
       await page.locator('.relationship-chip').click();
       await count(page,'.card.is-context-reference, .card.is-context-source, #pillars .is-context-evidence',0);
+      await settled(page);
       assert.equal(await page.locator('#context-detail').isVisible(),false);
       await page.locator('[data-context="roles"]').click();
       await count(page,'.card.is-related',0);
+      await settled(page);
       assert.equal(await page.locator('#relationship-detail').isVisible(),false);
       await page.locator('[data-role="indirect_wealth"]').click();
       await page.locator('[data-context="roots"]').click();
@@ -230,6 +233,7 @@ for (const profile of profiles) {
       await page.locator('#back-btn').click();
       await fillChart(page,{date:'1990-05-09',time:'12:00'});
       await count(page,'.card.is-context-reference, .card.is-context-source, #pillars .is-context-evidence',0);
+      await settled(page);
       assert.equal(await page.locator('#context-detail').isVisible(),false);
       await page.locator('[data-context="roles"]').click();
       assert.match(await page.locator('[data-role-group="companion"]').innerText(),/Not present/);

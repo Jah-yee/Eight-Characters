@@ -133,6 +133,7 @@ async function openLink(page, link, { place = CHENGDU, success = true } = {}) {
 // The pillars' boxes: their place on the page, with x taken within the chart column.
 // The column moves over once, when the panel first opens beside it (workbench.test.mjs).
 async function geometry(page) {
+  await settled(page);
   return page.locator('.pillar').evaluateAll((pillars) => {
     const column = document.querySelector('.chart-column').getBoundingClientRect();
     return pillars.map((pillar) => {

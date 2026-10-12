@@ -1,5 +1,5 @@
 import {
-  assert, describe, it, engineName, profiles, openChart, fillChart, count,
+  assert, describe, it, settled, engineName, profiles, openChart, fillChart, count,
   geometry, natalColors, longPress, screenshot, withPage, showDisplay, openRelationships,
 } from './chart-helpers.mjs';
 
@@ -27,6 +27,7 @@ for (const profile of profiles) {
       await screenshot(page, `${profile.name}-selected`);
       await page.locator('.relationship-chip').click();
       await count(page, '.card.is-related', 0);
+      await settled(page);
       assert.equal(await page.locator('#relationship-detail').isVisible(), false);
     });
 
@@ -47,6 +48,7 @@ for (const profile of profiles) {
       assert.equal(await chip.evaluate((node) => node === document.activeElement), true);
       await page.keyboard.press('Escape');
       assert.equal(await topic.getAttribute('aria-expanded'), 'false');
+      await settled(page);
       assert.equal(await page.locator('#chart-panel').isVisible(), false);
       assert.equal(await topic.evaluate((node) => node === document.activeElement), true);
       // Close does both at once.
@@ -207,9 +209,11 @@ for (const profile of profiles) {
       await count(page, '.card.is-related', 0);
       await count(page, '.card.is-flipped', 0);
       assert.equal(await page.locator('#display-switch button[data-display="characters"]').getAttribute('aria-pressed'), 'true');
+      await settled(page);
       assert.equal(await page.locator('#chart-panel').isVisible(), false);
       assert.equal(await page.locator('#relationships-topic').getAttribute('aria-expanded'), 'false');
       await openRelationships(page);
+      await settled(page);
       assert.equal(await page.locator('#relationship-detail').isVisible(), false);
       assert.equal(await page.locator('#relationship-empty').isVisible(), true);
     });

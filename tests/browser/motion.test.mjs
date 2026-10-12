@@ -51,6 +51,9 @@ for (const profile of profiles) {
       assert.ok(Math.abs(shift.before.x - shift.after.x) < .5);
       assert.ok(Math.abs(shift.before.width - shift.after.width) < .5);
       await page.locator('[data-close-panel]').click();
+      assert.deepEqual(await page.locator('#chart-panel').evaluate((panel) => ({
+        closed: panel.classList.contains('hidden'), inert: panel.inert,
+      })), { closed: true, inert: true });
       await settled(page);
       assert.equal(await page.locator('#chart-panel').isVisible(), false);
       assert.equal(await page.locator('#context-detail').innerText(), '');

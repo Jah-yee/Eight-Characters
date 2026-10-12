@@ -492,6 +492,7 @@ for (const profile of profiles) {
       await page.locator('#library-save').click();
       await page.waitForFunction(() => document.querySelector('.toast').classList.contains('is-shown'));
       assert.match(await page.locator('.toast').textContent(), /gender/);
+      await settled(page);
       assert.equal(await page.locator('#save-chart-dialog').isHidden(), true);
       assert.deepEqual((await read(page)).charts, []);
     });
@@ -618,6 +619,7 @@ for (const profile of profiles) {
       await page.locator('#library-save').click();
       await page.waitForFunction(() => document.querySelector('.toast').classList.contains('is-shown'));
       assert.equal(await page.locator('.toast').textContent(), message);
+      await settled(page);
       assert.equal(await page.locator('#save-chart-dialog').isHidden(), true);
       await openSettings(page);
       await page.locator('#settings-mine-body [data-settings-action="add-mine"]').click();
