@@ -1082,8 +1082,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const panelSections = [...chartPanel.querySelectorAll(':scope > section')];
   const syncPanel = () => {
     const open = panelSections.some((section) => !section.classList.contains('hidden'));
-    chartPanel.classList.toggle('hidden', !open);
-    chartView.classList.toggle('has-panel', open);
+    motion.layout(chartView, () => {
+      motion.panel(chartPanel, open);
+      chartView.classList.toggle('has-panel', open);
+    }, ':scope > .chart-column');
     // From 1200px wide the chart column moves over as the panel opens beside it.
     followCardHint();
   };
@@ -1302,6 +1304,7 @@ document.addEventListener('DOMContentLoaded', () => {
       angle: card.classList.contains('is-flipped') ? 180 : 0,
       height: inner.offsetHeight,
     };
+    from.height = inner.offsetHeight;
     card.classList.remove('is-turning');
     inner.style.height = '';
     const flipped = card.classList.toggle('is-flipped');
@@ -1309,7 +1312,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const height = inner.offsetHeight;
     card.classList.add('is-turning');
     motion.spring(inner, 'flip', {
-      from, to: { angle: flipped ? 180 : 0, height },
+      from, to: { angle: flipped ? 180 : 0, height }, rebase: true,
       write: (next) => {
         inner.style.height = `${Math.max(0, next.height)}px`;
         inner.style.transform = `rotateY(${next.angle}deg)`;
@@ -2447,9 +2450,17 @@ document.addEventListener('DOMContentLoaded', () => {
     toast.textContent = text;
     toast.classList.toggle('is-error', isError);
     toast.classList.add('is-shown');
+    const fade = (visible) => motion.spring(toast, 'toast', {
+      from: { progress: 0 }, to: { progress: visible ? 1 : 0 },
+      write: ({ progress }) => {
+        toast.style.opacity = String(Math.max(0, Math.min(1, progress)));
+        toast.style.transform = `translate(-50%, ${(1 - progress) * 8}px)`;
+      },
+      complete: () => { if (!visible) { toast.classList.remove('is-shown'); toast.textContent = ''; } },
+    });
+    fade(true);
     toastTimer = setTimeout(() => {
-      toast.classList.remove('is-shown');
-      toast.textContent = '';
+      fade(false);
     }, isError ? 6000 : 3000);
   };
   copyLinkBtn.addEventListener('click', async () => {

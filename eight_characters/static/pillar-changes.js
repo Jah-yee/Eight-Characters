@@ -94,7 +94,7 @@
       selected = null;
       root.querySelectorAll('.pillar-identity').forEach((button) => button.setAttribute('aria-expanded', 'false'));
       detail.classList.add('hidden');
-      detail.innerHTML = '';
+      window.EC_MOTION.retire(detail);
       status.textContent = '';
     };
 

@@ -5,6 +5,7 @@
   const model = Object.freeze({ stiffness: 180, damping: 20, mass: 1, travel: 20, feedback: 100 });
   const preference = matchMedia('(prefers-reduced-motion: reduce)');
   const channels = new WeakMap();
+  const panelStates = new WeakMap();
   const moving = new Set();
   let frame = 0;
   let previousTime = 0;
@@ -105,12 +106,14 @@
     }
   };
 
-  const disclose = (element, open, animate = true) => {
+  const disclose = (element, open, animate = true, after = null) => {
+    element.setAttribute('data-flow-disclosure', '');
     element.inert = !open;
     if (!animate) {
       cancel(element, 'disclosure');
       element.style.height = open ? 'auto' : '0px';
       element.style.opacity = open ? '1' : '0';
+      after?.();
       return;
     }
     spring(element, 'disclosure', {
@@ -120,7 +123,7 @@
         element.style.height = `${Math.max(0, height)}px`;
         element.style.opacity = String(clamp(opacity));
       },
-      complete: () => { element.style.height = open ? 'auto' : '0px'; },
+      complete: () => { element.style.height = open ? 'auto' : '0px'; after?.(); },
     });
   };
   const reveal = (element, { distance = model.travel, delay = 0 } = {}) => {
@@ -128,11 +131,142 @@
       from: { progress: 0 }, to: { progress: 1 }, delay,
       write: ({ progress }) => {
         element.style.opacity = String(clamp(progress));
-        element.style.translate = `0 ${(1 - progress) * distance}px`;
+        element.style.setProperty('--flow-enter-y', `${(1 - progress) * distance}px`);
+        element.setAttribute('data-flow-enter', '');
       },
-      complete: () => { element.style.opacity = ''; element.style.translate = ''; cancel(element, 'reveal'); },
+      complete: () => { element.style.opacity = ''; element.style.removeProperty('--flow-enter-y');
+        element.removeAttribute('data-flow-enter'); cancel(element, 'reveal'); },
     });
   };
+
+  const layout = (root, change, selector = ':scope > *') => {
+    const elements = [...root.querySelectorAll(selector)];
+    const before = new Map(elements.map((element) => [element, element.getBoundingClientRect()]));
+    const result = change();
+    for (const element of root.querySelectorAll(selector)) {
+      const old = before.get(element);
+      if (!old || !old.width || !old.height) continue;
+      element.removeAttribute('data-flow-layout');
+      const next = element.getBoundingClientRect();
+      if (!next.width || !next.height) continue;
+      const from = { x: old.left - next.left, y: old.top - next.top,
+        sx: old.width / next.width, sy: old.height / next.height };
+      if (Math.abs(from.x) < .5 && Math.abs(from.y) < .5
+        && Math.abs(from.sx - 1) < .001 && Math.abs(from.sy - 1) < .001) continue;
+      element.setAttribute('data-flow-layout', '');
+      spring(element, 'layout', { from, to: { x: 0, y: 0, sx: 1, sy: 1 }, rebase: true,
+        write: ({ x, y, sx, sy }) => {
+          element.style.setProperty('--flow-layout-x', `${x}px`); element.style.setProperty('--flow-layout-y', `${y}px`);
+          element.style.setProperty('--flow-layout-sx', String(sx)); element.style.setProperty('--flow-layout-sy', String(sy));
+        },
+        complete: () => {
+          element.removeAttribute('data-flow-layout');
+          ['x', 'y', 'sx', 'sy'].forEach((key) => element.style.removeProperty(`--flow-layout-${key}`));
+          cancel(element, 'layout');
+        },
+      });
+    }
+    return result;
+  };
+  const scroll = (element, left, top = element.scrollTop) => spring(element, 'scroll', {
+    from: { left: element.scrollLeft, top: element.scrollTop }, to: { left, top },
+    write: (next) => { element.scrollLeft = next.left; element.scrollTop = next.top; },
+    complete: () => cancel(element, 'scroll'),
+  });
+
+  const retire = (element) => {
+    queueMicrotask(() => {
+      if (!element.classList.contains('hidden')) return;
+      const parent = element.closest('.chart-panel');
+      if (!parent || !parent.hasAttribute('data-flow-leaving') || element.closest('.chart-container.hidden')) {
+        element.replaceChildren(); return;
+      }
+      element.setAttribute('data-flow-retain', '');
+      panelStates.get(parent).retired.add(element);
+    });
+  };
+  const panel = (element, open) => {
+    let state = panelStates.get(element);
+    if (!state) {
+      state = { open: false, box: null, retired: new Set(), saved: null };
+      panelStates.set(element, state);
+      new ResizeObserver(() => {
+        if (state.open && !element.closest('.hidden')) state.box = element.getBoundingClientRect();
+      }).observe(element);
+    }
+    if (state.open === open) return;
+    state.open = open;
+    element.inert = !open;
+    if (open) {
+      for (const child of state.retired) {
+        child.removeAttribute('data-flow-retain');
+        if (child.classList.contains('hidden')) child.replaceChildren();
+      }
+      state.retired.clear();
+      if (state.saved) Object.assign(element.style, state.saved);
+      element.removeAttribute('data-flow-leaving'); element.classList.remove('hidden');
+      state.box = element.getBoundingClientRect();
+    } else {
+      const box = state.box ?? element.getBoundingClientRect();
+      state.saved ??= Object.fromEntries(['position', 'left', 'top', 'right', 'bottom', 'width', 'height', 'margin']
+        .map((key) => [key, element.style[key]]));
+      element.setAttribute('data-flow-leaving', '');
+      Object.assign(element.style, { position: 'fixed', left: `${box.left}px`, top: `${box.top}px`,
+        right: 'auto', bottom: 'auto', width: `${box.width}px`, height: `${box.height}px`, margin: '0' });
+      element.classList.add('hidden');
+    }
+    spring(element, 'panel', {
+      from: { progress: open ? 0 : 1 }, to: { progress: open ? 1 : 0 },
+      write: ({ progress }) => {
+        element.style.opacity = String(clamp(progress));
+        element.style.setProperty('--flow-enter-y', `${(1 - progress) * model.travel}px`);
+        element.setAttribute('data-flow-enter', '');
+      },
+      complete: () => {
+        element.style.opacity = ''; element.style.removeProperty('--flow-enter-y'); element.removeAttribute('data-flow-enter');
+        if (!open) {
+          element.removeAttribute('data-flow-leaving'); Object.assign(element.style, state.saved); state.saved = null;
+          for (const child of state.retired) { child.removeAttribute('data-flow-retain'); child.replaceChildren(); }
+          state.retired.clear();
+        }
+      },
+    });
+  };
+
+  // Semantic surfaces enter as one unit. Updating a reading does not replay a
+  // chart's entrance, and focus/selection changes never trigger decorative motion.
+  document.addEventListener('DOMContentLoaded', () => {
+    const scenes = '#input-view, #chart-view, #today-view, #settings-view, #compare-view';
+    const contents = '#context-detail, #pillar-detail, #luck-detail, #relationship-detail, '
+      + '#today-detail, #today-scale, #today-pillars, #today-couple, #today-in-chart, #today-hours, '
+      + '#settings-mine-body, #settings-couples-body, #settings-charts-body, #library-list, '
+      + '#params-body, #legend-panel, #inspector-panel';
+    const previous = new WeakMap();
+    document.querySelectorAll(contents).forEach((element) => previous.set(element, element.innerHTML));
+    const observer = new MutationObserver((records) => {
+      const changed = new Set();
+      for (const record of records) {
+        const element = record.target;
+        if (!(element instanceof Element)) continue;
+        if (record.type === 'attributes' && element.matches(scenes)) {
+          const wasHidden = (record.oldValue || '').split(/\s+/).includes('hidden');
+          if (wasHidden && !element.classList.contains('hidden')) reveal(element);
+        }
+        if (record.type === 'childList') {
+          const surface = element.closest(contents);
+          if (surface) changed.add(surface);
+        }
+      }
+      for (const element of changed) {
+        const html = element.innerHTML;
+        if (previous.get(element) === html) continue;
+        previous.set(element, html);
+        if (element.getClientRects().length && !element.closest('.hidden')) reveal(element, { distance: 8 });
+      }
+    });
+    observer.observe(document.body, { subtree: true, childList: true, attributes: true,
+      attributeFilter: ['class'], attributeOldValue: true });
+  });
 
   // CSS-only feedback samples this same spring; spatial transitions use the live
   // integrator so a reversal preserves velocity instead of restarting an easing.
@@ -150,6 +284,6 @@
   css.setProperty('--flow-feedback', `${model.feedback}ms`);
   preference.addEventListener('change', () => { if (preference.matches) finish(); });
   window.addEventListener('beforeprint', finish);
-  window.EC_MOTION = Object.freeze({ model, spring, value, cancel, disclose, reveal, finish,
+  window.EC_MOTION = Object.freeze({ model, spring, value, cancel, disclose, reveal, layout, scroll, panel, retire, finish,
     reduced: () => preference.matches, active: () => moving.size > 0 });
 })();

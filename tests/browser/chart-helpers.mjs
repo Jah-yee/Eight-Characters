@@ -68,6 +68,7 @@ async function settled(page) {
       await Promise.allSettled(running.map((animation) => animation.finished));
     }
   });
+  await page.waitForFunction(() => !window.EC_MOTION?.active());
   await count(page, '.is-turning', 0);
 }
 

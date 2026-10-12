@@ -1,6 +1,41 @@
 /* Natural flow / Tactile. The spring curve and settling time come from motion.js. */
 :root { --flow-feedback-ease: ease-out; }
+[data-flow-enter], [data-flow-layout] {
+  translate: var(--flow-layout-x, 0px) calc(var(--flow-layout-y, 0px) + var(--flow-enter-y, 0px));
+}
+[data-flow-layout] { scale: var(--flow-layout-sx, 1) var(--flow-layout-sy, 1); transform-origin: 0 0; }
+.chart-panel.hidden[data-flow-leaving] { display: block !important; pointer-events: none; }
+.chart-panel[data-flow-leaving] > .hidden[data-flow-retain] { display: block !important; }
 .hidden-stems-panel, .hidden-stems-panel.is-expanded { transition: none; }
+[data-flow-disclosure] { overflow: hidden; box-sizing: border-box; }
+.toast { transition: none; }
+.pillar, .pillar:nth-child(n), .pillar-arcs { animation: none; }
+/* Native dialog close semantics stay immediate; discrete display/overlay transitions
+   keep only the visual exit alive, without delaying focus or request cancellation. */
+dialog {
+  opacity: 0;
+  transform: translateY(20px) scale(.975);
+  transition: opacity var(--flow-settle) var(--flow-spring),
+    transform var(--flow-settle) var(--flow-spring),
+    display var(--flow-settle) allow-discrete, overlay var(--flow-settle) allow-discrete;
+}
+dialog[open] { opacity: 1; transform: translateY(0) scale(1); }
+dialog:not([open]), dialog:not([open])::backdrop { pointer-events: none; }
+dialog::backdrop {
+  opacity: 0;
+  transition: opacity var(--flow-feedback) var(--flow-feedback-ease),
+    display var(--flow-settle) allow-discrete, overlay var(--flow-settle) allow-discrete;
+}
+dialog[open]::backdrop { opacity: 1; }
+@starting-style {
+  dialog[open] { opacity: 0; transform: translateY(20px) scale(.975); }
+  dialog[open]::backdrop { opacity: 0; }
+}
+.today-day { transition: visibility var(--flow-settle); }
+.today-view :is(.today-body, .chart-panel) { transition: opacity var(--flow-feedback) var(--flow-feedback-ease); }
+@media print {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation: none !important;

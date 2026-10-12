@@ -720,7 +720,7 @@
       const pageFocus = detail.contains(document.activeElement);
       open = false;
       detail.classList.add('hidden');
-      detail.innerHTML = '';
+      window.EC_MOTION.retire(detail);
       delete detail.dataset.topic;
       status.textContent = '';
       syncRibbon();
@@ -842,7 +842,7 @@
     const render = (pillarsData, context, cards, chart, timezone) => {
       open = false;
       detail.classList.add('hidden');
-      detail.innerHTML = '';
+      window.EC_MOTION.retire(detail);
       delete detail.dataset.topic;
       status.textContent = '';
       if (!pillarsData && !context && !cards) {

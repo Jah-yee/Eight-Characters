@@ -151,7 +151,7 @@
       clearHighlights();
       summary.querySelectorAll('button[data-context]').forEach((button) => button.setAttribute('aria-expanded', 'false'));
       detail.classList.add('hidden');
-      detail.innerHTML = '';
+      window.EC_MOTION.retire(detail);
       delete detail.dataset.topic;
       status.textContent = '';
     };

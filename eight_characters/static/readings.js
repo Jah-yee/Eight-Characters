@@ -360,18 +360,18 @@
       button.setAttribute('aria-expanded', String(next));
       const passage = root.querySelector(`#${button.getAttribute('aria-controls')}`);
       if (!passage) fail('a passage');
-      passage.hidden = !next;
+      passage.hidden = false;
+      window.EC_MOTION.disclose(passage, next, true, () => { passage.hidden = !next; });
       const part = button.closest('.canon-line').dataset.canonPart;
       if (next) open.add(part); else open.delete(part);
     };
-    const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     // Brings a page's line into view and marks it a moment; `openIt` opens it too.
     const arrive = (section, part, openIt = false) => {
       const target = section.querySelector(`.canon-line[data-canon-part="${part}"]`);
       if (!target) return null;
       if (openIt) toggle(target.querySelector('.canon-line-toggle'), true);
       const top = target.getBoundingClientRect().top - panel.getBoundingClientRect().top + panel.scrollTop;
-      panel.scrollTo({ top: Math.max(0, top - panel.clientHeight / 8), behavior: reduced() ? 'auto' : 'smooth' });
+      window.EC_MOTION.scroll(panel, panel.scrollLeft, Math.max(0, top - panel.clientHeight / 8));
       root.querySelectorAll('.canon-line.is-arrived').forEach((node) => node.classList.remove('is-arrived'));
       void target.offsetWidth;
       target.classList.add('is-arrived');
