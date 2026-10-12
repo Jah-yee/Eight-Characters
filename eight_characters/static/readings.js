@@ -372,7 +372,8 @@
       if (openIt) toggle(target.querySelector('.canon-line-toggle'), true);
       window.EC_MOTION.scroll(panel, panel.scrollLeft, () => Math.max(0,
         target.getBoundingClientRect().top - panel.getBoundingClientRect().top + panel.scrollTop - panel.clientHeight / 8), {
-        pending: () => openIt && window.EC_MOTION.value(target.querySelector('.canon-line-passage'), 'disclosure') !== null,
+        pending: () => window.EC_MOTION.value(panel, 'panel-size') !== null
+          || (openIt && window.EC_MOTION.value(target.querySelector('.canon-line-passage'), 'disclosure') !== null),
       });
       root.querySelectorAll('.canon-line.is-arrived').forEach((node) => node.classList.remove('is-arrived'));
       clearTimeout(arrivalTimer);
