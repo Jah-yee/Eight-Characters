@@ -162,6 +162,31 @@ for (const profile of profiles) {
       }), ownership.camera);
     });
 
+    check('double-click zoom uses the shared spring and reverses from the displayed camera', async (page) => {
+      await openExplorer(page);
+      await page.waitForFunction(() => !window.EC_MOTION.active());
+      const started = await page.locator('#graph').evaluate((graph) => {
+        const box = graph.getBoundingClientRect();
+        const camera = window.d3.zoomTransform(graph);
+        graph.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true,
+          clientX: box.left + box.width / 2, clientY: box.top + box.height / 2 }));
+        return { scale: camera.k, moving: window.EC_MOTION.value(graph, 'zoom') !== null };
+      });
+      assert.equal(started.moving, true);
+      await page.waitForTimeout(100);
+      const reversal = await page.locator('#graph').evaluate((graph) => {
+        const box = graph.getBoundingClientRect();
+        const before = window.d3.zoomTransform(graph);
+        graph.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true, shiftKey: true,
+          clientX: box.left + box.width / 2, clientY: box.top + box.height / 2 }));
+        const after = window.d3.zoomTransform(graph);
+        return { before: { x: before.x, y: before.y, k: before.k }, after: { x: after.x, y: after.y, k: after.k } };
+      });
+      assert.ok(reversal.before.k > started.scale);
+      assert.deepEqual(reversal.after, reversal.before);
+      await page.waitForFunction(() => !window.EC_MOTION.active());
+    });
+
     check('the chart loads as before, and the pane asks for its controls only when opened', async (page) => {
       const requests = recordRequests(page);
       await openExplorer(page);

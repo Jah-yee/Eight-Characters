@@ -151,7 +151,7 @@
   let pulseSel;
   let simulation;
   let zoomBehavior;
-  let applyingFit = false;
+  let applyingCamera = false;
   let fluxScale;
   let width = 0;
   let height = 0;
@@ -1219,10 +1219,19 @@
       .scaleExtent([0.2, 5])
       .on('start', (event) => { if (event.sourceEvent) window.EC_MOTION.cancel(svg.node(), 'zoom'); })
       .on('zoom', (event) => {
-        if (event.sourceEvent && !applyingFit) window.EC_MOTION.cancel(svg.node(), 'zoom');
+        if (event.sourceEvent && !applyingCamera) window.EC_MOTION.cancel(svg.node(), 'zoom');
         rootGroup.attr('transform', event.transform);
       });
     svg.call(zoomBehavior);
+    svg.on('dblclick.zoom', (event) => {
+      event.preventDefault(); event.stopPropagation();
+      const point = d3.pointer(event.changedTouches ? event.changedTouches[0] : event, svg.node());
+      const current = d3.zoomTransform(svg.node());
+      const [minimum, maximum] = zoomBehavior.scaleExtent();
+      const scale = Math.max(minimum, Math.min(maximum, current.k * (event.shiftKey ? .5 : 2)));
+      const anchor = current.invert(point);
+      moveCamera(d3.zoomIdentity.translate(point[0] - anchor[0] * scale, point[1] - anchor[1] * scale).scale(scale));
+    });
   }
 
   function buildMotifSegments() {
@@ -2042,6 +2051,18 @@
       `${visibleNodes} nodes visible \u2022 ${visibleEdges} directed edges visible \u2022 ${motifSegmentsVisible} motif segments \u2022 ${activeModifiers} topology modifiers`;
   }
 
+  function moveCamera(transform) {
+    const current = d3.zoomTransform(svg.node());
+    window.EC_MOTION.spring(svg.node(), 'zoom', {
+      from: { x: current.x, y: current.y, k: current.k }, to: { x: transform.x, y: transform.y, k: transform.k }, rebase: true,
+      write: ({ x, y, k }) => {
+        applyingCamera = true;
+        try { svg.call(zoomBehavior.transform, d3.zoomIdentity.translate(x, y).scale(k)); }
+        finally { applyingCamera = false; }
+      },
+    });
+  }
+
   function fitToView() {
     if (!state.views.graph) return;
     const visibleNodes = state.nodes.filter((node) => {
@@ -2063,15 +2084,7 @@
     const ty = height / 2 - (minY + maxY) / 2 * scale;
     const transform = d3.zoomIdentity.translate(tx, ty).scale(scale);
 
-    const current = d3.zoomTransform(svg.node());
-    window.EC_MOTION.spring(svg.node(), 'zoom', {
-      from: { x: current.x, y: current.y, k: current.k }, to: { x: transform.x, y: transform.y, k: transform.k }, rebase: true,
-      write: ({ x, y, k }) => {
-        applyingFit = true;
-        try { svg.call(zoomBehavior.transform, d3.zoomIdentity.translate(x, y).scale(k)); }
-        finally { applyingFit = false; }
-      },
-    });
+    moveCamera(transform);
   }
 
   function rebuildGraph(shouldFit = true) {
