@@ -49,6 +49,8 @@ the previous responsive layout cannot constrain the new one.
 Animations neither defer account operations nor change chart computation. A surface
 that is closed accepts no interaction. Retired account content is cleared when its
 containing view leaves, and detached actors stop participating in the frame loop.
+Actors in a departed view settle their logical state and release temporary sizes;
+scrolling stops without resetting the hidden view's saved position.
 
 Browser regressions wait for both native animations and the shared motion runtime.
 `tests/browser/motion.test.mjs` covers reversals, responsive disclosures, panel

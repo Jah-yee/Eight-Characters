@@ -24,9 +24,9 @@
     mark(channel.owner);
     channel.complete?.();
   };
-  const refreshTarget = (channel) => {
+  const refreshTarget = (channel, now) => {
     if (!channel.resolveTarget) return;
-    const next = channel.resolveTarget();
+    const next = channel.resolveTarget(now);
     for (const key of Object.keys(next)) {
       if (!Number.isFinite(next[key]) || !Number.isFinite(channel.value[key])) {
         throw new Error(`Natural flow received a non-finite ${channel.name}.${key}.`);
@@ -47,8 +47,17 @@
         mark(channel.owner);
         continue;
       }
+      if (!channel.owner.getClientRects().length) {
+        if (channel.name === 'scroll') cancel(channel.owner, 'scroll');
+        else {
+          Object.assign(channel.value, channel.target);
+          Object.keys(channel.velocity).forEach((key) => { channel.velocity[key] = 0; });
+          complete(channel);
+        }
+        continue;
+      }
       if (now < channel.start) continue;
-      refreshTarget(channel);
+      refreshTarget(channel, now);
       let resting = true;
       for (const key of Object.keys(channel.target)) {
         for (let step = 0; step < steps; step++) {
@@ -315,7 +324,8 @@
           },
           canComplete: () => !element.querySelector('[data-flow-disclosure]'),
           write: ({ height }) => { element.style.height = `${Math.max(0, height)}px`; },
-          complete: () => { element.style.height = state.originalHeight; state.box = element.getBoundingClientRect(); cancel(element, 'panel-size'); },
+          complete: () => { element.style.height = state.originalHeight;
+            state.box = element.getClientRects().length ? element.getBoundingClientRect() : null; cancel(element, 'panel-size'); },
         });
       }
     };

@@ -65,6 +65,17 @@ for (const profile of profiles) {
       await settled(page);
     });
 
+    check('leaving a view mid-turn releases its card geometry', async (page) => {
+      await openChart(page);
+      await page.locator('[data-display="ten-gods"]').click();
+      await page.waitForTimeout(120);
+      await page.locator('#back-btn').click();
+      await page.locator('#input-view').waitFor({ state: 'visible' });
+      await settled(page);
+      assert.equal(await page.locator('.card.is-turning').count(), 0);
+      assert.equal(await page.locator('#pillars .card-inner').evaluateAll((inners) => inners.every((inner) => inner.style.height === '' && inner.style.transform === '')), true);
+    });
+
     check('a panel makes room without jumping the chart and can reverse immediately', async (page) => {
       await openChart(page);
       const shift = await page.evaluate(async () => {

@@ -1306,6 +1306,24 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   // The facing side sizes the card, so a taller back grows the card as it turns.
+  let cardHeightFrame = null;
+  let cardHeights = new Map();
+  const naturalCardHeights = (now) => {
+    if (Number.isFinite(now) && cardHeightFrame === now) return cardHeights;
+    // The pillars share grid rows. Measure all facing sides together, without
+    // any animated height holding those rows at their previous size.
+    const cards = [...pillarsContainer.querySelectorAll('.card')].map((card) => ({
+      card, inner: card.querySelector('.card-inner'), turning: card.classList.contains('is-turning'),
+    }));
+    const saved = cards.map(({ inner }) => inner.style.height);
+    for (const { card, inner } of cards) { card.classList.remove('is-turning'); inner.style.height = ''; }
+    cardHeights = new Map(cards.map(({ inner }) => [inner, Number.parseFloat(getComputedStyle(inner).height)]));
+    cards.forEach(({ card, inner, turning }, index) => {
+      inner.style.height = saved[index]; card.classList.toggle('is-turning', turning);
+    });
+    cardHeightFrame = now;
+    return cardHeights;
+  };
   const flipCard = (card) => {
     const inner = card.querySelector('.card-inner');
     const from = motion.value(inner, 'flip') ?? {
@@ -1317,10 +1335,9 @@ document.addEventListener('DOMContentLoaded', () => {
     inner.style.height = '';
     const flipped = card.classList.toggle('is-flipped');
     labelCard(card);
-    const height = Number.parseFloat(getComputedStyle(inner).height);
     card.classList.add('is-turning');
     motion.spring(inner, 'flip', {
-      from, to: { angle: flipped ? 180 : 0, height }, rebase: true,
+      from, to: (now) => ({ angle: flipped ? 180 : 0, height: naturalCardHeights(now).get(inner) }), rebase: true,
       write: (next) => {
         inner.style.height = `${Math.max(0, next.height)}px`;
         inner.style.transform = `rotateY(${next.angle}deg)`;
