@@ -3,6 +3,8 @@
 // ═══════════════════════════════════════════════════════
 
 document.addEventListener('DOMContentLoaded', () => {
+  const motion = window.EC_MOTION;
+  if (!motion) throw new Error('Natural flow is unavailable.');
   const i18n = window.EC_I18N;
   if (!i18n) {
     return;
@@ -1217,28 +1219,14 @@ document.addEventListener('DOMContentLoaded', () => {
     branchCard.classList.add('is-expanded');
     branchCard.setAttribute('aria-expanded', 'true');
     panel.classList.add('is-expanded');
-    if (!animate) {
-      panel.style.height = 'auto';
-      return;
-    }
-    panel.style.height = panel.scrollHeight + 'px';
-    // Once open, the panel takes its content's height at any width. The opacity ends
-    // first, so only the panel's own height ending counts.
-    const opened = (event) => {
-      if (event.target !== panel || event.propertyName !== 'height') return;
-      panel.removeEventListener('transitionend', opened);
-      if (panel.classList.contains('is-expanded')) panel.style.height = 'auto';
-    };
-    panel.addEventListener('transitionend', opened);
+    motion.disclose(panel, true, animate);
   };
 
   const collapsePanel = (panel, branchCard) => {
-    panel.style.height = panel.scrollHeight + 'px';
-    panel.offsetHeight; // force reflow
     panel.classList.remove('is-expanded');
     branchCard.classList.remove('is-expanded');
     branchCard.setAttribute('aria-expanded', 'false');
-    panel.style.height = '0';
+    motion.disclose(panel, false);
   };
 
   // ── Cards: long press flips to ten gods, quick click toggles hidden stems ──
@@ -1310,25 +1298,28 @@ document.addEventListener('DOMContentLoaded', () => {
   // The facing side sizes the card, so a taller back grows the card as it turns.
   const flipCard = (card) => {
     const inner = card.querySelector('.card-inner');
-    inner.getAnimations().forEach((animation) => animation.cancel());
+    const from = motion.value(inner, 'flip') ?? {
+      angle: card.classList.contains('is-flipped') ? 180 : 0,
+      height: inner.offsetHeight,
+    };
     card.classList.remove('is-turning');
-    const fromHeight = inner.getBoundingClientRect().height;
+    inner.style.height = '';
     const flipped = card.classList.toggle('is-flipped');
     labelCard(card);
-    if (reducedMotion.matches) return;
-    const toHeight = inner.getBoundingClientRect().height;
+    const height = inner.offsetHeight;
     card.classList.add('is-turning');
-    const turn = inner.animate(
-      [
-        { height: `${fromHeight}px`, transform: `rotateY(${flipped ? 0 : 180}deg)` },
-        { height: `${toHeight}px`, transform: `rotateY(${flipped ? 180 : 360}deg)` },
-      ],
-      { duration: 600, easing: 'cubic-bezier(0.4, 0, 0.2, 1)', fill: 'forwards' }
-    );
-    turn.onfinish = () => {
-      card.classList.remove('is-turning');
-      turn.cancel();
-    };
+    motion.spring(inner, 'flip', {
+      from, to: { angle: flipped ? 180 : 0, height },
+      write: (next) => {
+        inner.style.height = `${Math.max(0, next.height)}px`;
+        inner.style.transform = `rotateY(${next.angle}deg)`;
+      },
+      complete: () => {
+        card.classList.remove('is-turning');
+        inner.style.height = '';
+        inner.style.transform = '';
+      },
+    });
   };
 
   pillarsContainer.addEventListener('pointerdown', (e) => {

@@ -1,0 +1,11 @@
+/* Natural flow / Tactile. The spring curve and settling time come from motion.js. */
+:root { --flow-feedback-ease: ease-out; }
+.hidden-stems-panel, .hidden-stems-panel.is-expanded { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+  .card.branch:hover { transform: none; }
+}
