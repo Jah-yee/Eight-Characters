@@ -147,7 +147,7 @@
     const heading = document.createElement('strong'); const purpose = document.createElement('span'); tip.append(heading, purpose); document.body.append(tip);
     let active = null; let pending = null; let hoverTimer = null; let exitTimer = null; let fadeTimer = null;
     let keyboard = false; let escapeKeyDown = false; let dismissed = null; let touch = null; let suppressedClick = null; let hoveringTip = false;
-    let dismissedPoint = null;
+    let touchInput = false;
     const trigger = (target) => target instanceof Element ? target.closest(selectors) : null;
     const cancelHover = () => { clearTimeout(hoverTimer); hoverTimer = null; pending = null; };
     const describe = (node, add) => {
@@ -218,22 +218,20 @@
       return event.clientX >= box.left && event.clientX <= box.right && event.clientY >= box.top && event.clientY <= box.bottom;
     };
     document.addEventListener('pointerover', event => {
-      if (event.pointerType === 'touch') return;
+      if (event.pointerType === 'touch' || touchInput) return;
       if (overTip(event)) { hoveringTip = true; cancelHover(); clearTimeout(exitTimer); return; }
       const node = trigger(event.target);
       if (node && !node.contains(event.relatedTarget)) schedule(node);
     });
     document.addEventListener('pointerout', event => {
-      if (event.pointerType === 'touch') return;
+      if (event.pointerType === 'touch' || touchInput) return;
       const node = trigger(event.target);
       if (node?.contains(event.relatedTarget) || overTip(event)) return;
       if (node && pending === node) cancelHover();
       if (node && active === node) exitTimer = setTimeout(() => {
         if (!(keyboard && active?.contains(document.activeElement))) hide();
       }, 100);
-      if (dismissed === node && (!dismissedPoint || event.clientX !== dismissedPoint.x || event.clientY !== dismissedPoint.y)) {
-        dismissed = null; dismissedPoint = null;
-      }
+      if (dismissed === node) dismissed = null;
     });
     document.addEventListener('focusin', event => {
       const node = trigger(event.target);
@@ -242,15 +240,15 @@
     });
     document.addEventListener('focusout', event => {
       if (active?.contains(event.target) && !active.contains(event.relatedTarget)) hide();
-      if (dismissed?.contains(event.target)) { dismissed = null; dismissedPoint = null; }
+      if (dismissed?.contains(event.target)) dismissed = null;
     });
     document.addEventListener('keydown', event => {
       keyboard = true;
-      if (event.key === 'Escape') { escapeKeyDown = true; dismissed = active ?? pending; dismissedPoint = null; hide(); }
+      if (event.key === 'Escape') { escapeKeyDown = true; dismissed = active ?? pending; hide(); }
     }, true);
     document.addEventListener('keyup', event => { if (event.key === 'Escape') escapeKeyDown = false; }, true);
     document.addEventListener('pointerdown', event => {
-      keyboard = false; dismissed = null; dismissedPoint = null;
+      keyboard = false; dismissed = null; touchInput = event.pointerType === 'touch';
       const node = trigger(event.target);
       if (active && active !== node && !tip.contains(event.target)) hide();
       if (event.pointerType !== 'touch' || !node || !info(node).only || node.matches(':disabled')) return;
@@ -260,11 +258,16 @@
     // A hold is its finger's alone: another pointer's events leave it, such as the mouse
     // pointer WebKit moves back to the last tap's place after a scroll.
     document.addEventListener('pointermove', event => {
-      if (dismissedPoint && (event.clientX !== dismissedPoint.x || event.clientY !== dismissedPoint.y)) {
-        dismissed = null; dismissedPoint = null;
-      }
       if (touch?.id === event.pointerId && Math.hypot(event.clientX - touch.x, event.clientY - touch.y) > 10) { cancelHover(); if (touch.shown) hide(); touch = null; }
       if (event.pointerType === 'touch') return;
+      if (touchInput) {
+        if (touch !== null) return;
+        // Layout can dispatch mouse enter/leave events below a stationary
+        // compatibility pointer after a tap. Only mouse movement restores hover.
+        touchInput = false;
+        const node = trigger(event.target);
+        if (node) schedule(node);
+      }
       const inside = overTip(event);
       if (inside) { cancelHover(); clearTimeout(exitTimer); }
       else if (hoveringTip) {
@@ -284,11 +287,7 @@
     document.addEventListener('click', event => {
       if (suppressedClick && performance.now() < suppressedClick.until && suppressedClick.node.contains(event.target)) {
         event.preventDefault(); event.stopImmediatePropagation(); suppressedClick = null;
-      } else if (!tip.contains(event.target)) {
-        dismissed = trigger(event.target);
-        dismissedPoint = dismissed ? { x: event.clientX, y: event.clientY } : null;
-        hide();
-      }
+      } else if (!tip.contains(event.target)) hide();
     }, true);
     document.addEventListener('contextmenu', event => { if (touch?.shown || active && info(active).only && event.pointerType === 'touch') event.preventDefault(); });
     document.addEventListener('scroll', () => { if (touch) { cancelHover(); touch = null; } position(); }, true);
