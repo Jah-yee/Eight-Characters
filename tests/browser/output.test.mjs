@@ -138,6 +138,7 @@ for (const profile of profiles) {
       await page.emulateMedia({ media: 'screen' });
       await page.locator('[data-close-panel]').click();
       await page.emulateMedia({ media: 'print' });
+      await settled(page);
       assert.equal(await page.locator('#chart-panel').isVisible(), false);
     });
 

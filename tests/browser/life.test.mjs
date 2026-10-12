@@ -238,6 +238,7 @@ for (const profile of profiles) {
       assert.deepEqual(chosen.ringed, ['hour branch', 'day branch', 'month branch', 'year branch']);
       // Pressed again, the page closes and the decade stays in the chart.
       await choose(page, '4/branch');
+      await settled(page);
       assert.equal(await page.locator('#luck-detail').isVisible(), false);
       assert.equal(await linkPart(page, 'luck'), '4/branch');
       assert.deepEqual((await state(page)).expanded, []);

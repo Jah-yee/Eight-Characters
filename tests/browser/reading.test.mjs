@@ -63,6 +63,7 @@ function readOf(page, section, part) {
 
 async function toggle(page, section, part) {
   await page.locator(`${section} .canon-line[data-canon-part="${part}"] .canon-line-toggle`).click();
+  await settled(page);
 }
 
 async function openAll(page, section) {
@@ -280,6 +281,7 @@ for (const profile of profiles) {
       assert.deepEqual((await lines(page, '#context-detail')).filter((l) => l.open), []);
       // Escape closes it and gives focus back to the line that opened it.
       await page.keyboard.press('Escape');
+      await settled(page);
       assert.equal(await page.locator('#chart-panel').isHidden(), true);
       assert.equal(await page.evaluate(() => document.activeElement.matches('.canon-day-master-line')), true);
       assert.equal(await topicOf(page), null);

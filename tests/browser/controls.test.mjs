@@ -49,6 +49,7 @@ for (const profile of profiles) {
       assert.equal(await page.locator('[data-role-back] svg[data-control-icon="arrow-left"]').count(), 1);
       assert.ok(await page.locator('[data-root-pillar] svg[data-control-icon="sprout"]').count() > 0);
       await page.keyboard.press('Escape');
+      await settled(page);
       assert.equal(await page.locator('#chart-panel').isVisible(), false);
       await page.locator('#relationships-topic').click();
       assert.equal(await page.locator('.relationship-chip svg[data-control-icon="chevron-right"]').count(), payload.interactions.length);
@@ -57,6 +58,7 @@ for (const profile of profiles) {
       assert.equal(await page.locator('.relationship-chip.is-active, .relationship-arc.is-active').count(), 0);
       assert.equal(await page.locator('.relationship-chip').first().evaluate(node => node === document.activeElement), true);
       await page.locator('[data-close-panel]').click();
+      await settled(page);
       assert.equal(await page.locator('#chart-panel').isVisible(), false);
     });
 
@@ -104,6 +106,7 @@ for (const profile of profiles) {
       await page.locator('[data-context="roots"]').click();
       await page.keyboard.press('Tab'); await page.locator('[data-context="roots"]').focus(); await tipOpen(page);
       await page.keyboard.press('Escape'); await tipClosed(page);
+      await settled(page);
       assert.equal(await page.locator('#chart-panel').isVisible(), false, 'Escape keeps the chart’s existing behavior');
     });
 
@@ -213,6 +216,11 @@ for (const profile of profiles) {
           assert.notEqual(await phase(), before, 'a quick tap moves to the adjacent phase');
           await tipClosed(page);
         }
+        // A real mouse movement resumes hover on devices that also support touch.
+        await page.mouse.move(0, 0);
+        await page.locator('[data-luck-step="-1"]').hover(); await tipOpen(page);
+        assert.equal(await page.locator(tipSelector + ' strong').textContent(), 'Previous phase');
+        await page.mouse.move(0, 0); await tipClosed(page);
       });
 
       check('a touch hold is its finger’s alone: another pointer moving, lifting or cancelling leaves it', async (page) => {

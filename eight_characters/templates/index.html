@@ -9,6 +9,7 @@
 <link rel="preload" href="/explorer/vendor/fonts/Manrope-normal-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/explorer/vendor/fonts/CormorantGaramond-normal-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/static/style.css?v={{ app_version }}">
+<link rel="stylesheet" href="/static/motion.css?v={{ app_version }}">
 </head>
 <body>
 
@@ -189,6 +190,7 @@
   </div>
 
   <aside id="chart-panel" class="chart-panel hidden" aria-labelledby="chart-panel-title">
+    <div class="chart-panel-body">
     <div class="chart-panel-bar">
       <h2 id="chart-panel-title" class="sr-only" data-i18n="panel_title">Tarkempi tieto</h2>
       <button type="button" class="panel-close" data-close-panel data-i18n="panel_close">Sulje</button>
@@ -204,6 +206,7 @@
     <section id="relationship-detail" class="relationship-detail hidden" aria-labelledby="relationship-detail-title"></section>
     <section id="context-detail" class="relationship-detail context-detail hidden" aria-labelledby="context-detail-title"></section>
     <section id="luck-detail" class="relationship-detail luck-detail hidden" aria-labelledby="luck-detail-title"></section>
+    </div>
   </aside>
 
   <p id="context-status" class="sr-only" aria-live="polite" aria-atomic="true"></p>
@@ -303,11 +306,13 @@
     </div>
   </div>
   <aside id="today-panel" class="chart-panel hidden" aria-labelledby="today-panel-title">
+    <div class="chart-panel-body">
     <div class="chart-panel-bar">
       <h2 id="today-panel-title" class="sr-only" data-i18n="panel_title">Tarkempi tieto</h2>
       <button type="button" class="panel-close" data-close-today-panel data-i18n="panel_close">Sulje</button>
     </div>
     <section id="today-detail" class="relationship-detail today-detail" aria-labelledby="today-detail-title"></section>
+    </div>
   </aside>
   <p id="today-status" class="sr-only" aria-live="polite" aria-atomic="true"></p>
 </div>
@@ -572,6 +577,7 @@
 <script id="account-state" type="application/json">{{ account | tojson }}</script>
 
 <script src="/static/localization.js?v={{ app_version }}"></script>
+<script src="/static/motion.js?v={{ app_version }}"></script>
 <script src="/static/icons.js?v={{ app_version }}"></script>
 <script src="/static/controls.js?v={{ app_version }}"></script>
 <script src="/static/spotlight.js?v={{ app_version }}"></script>

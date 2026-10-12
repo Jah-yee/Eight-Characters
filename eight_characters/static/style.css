@@ -241,9 +241,9 @@
   overflow-wrap: break-word;
   opacity: 0;
   transform: translateY(2px);
-  transition: opacity 90ms ease, transform 90ms ease;
+  transition: opacity var(--flow-feedback) var(--flow-feedback-ease), transform var(--flow-settle) var(--flow-spring);
 }
-.control-tooltip.is-visible { opacity: 1; transform: translateY(0); transition-duration: 120ms; }
+.control-tooltip.is-visible { opacity: 1; transform: translateY(0); transition-duration: var(--flow-feedback); }
 .control-tooltip strong { font-weight: 600; }
 @media (pointer: coarse) {
   .icon-control { min-width: 44px; min-height: 44px; }
@@ -305,7 +305,7 @@ body {
   padding: var(--space-1) var(--space-2);
   border-radius: 999px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--flow-feedback) var(--flow-feedback-ease);
 }
 
 .lang-btn.is-active {
@@ -385,7 +385,7 @@ body {
   padding: var(--space-3) var(--space-4);
   text-align: left;
   outline: none;
-  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+  transition: border-color var(--flow-feedback) var(--flow-feedback-ease), box-shadow var(--flow-feedback) var(--flow-feedback-ease);
   width: 180px;
 }
 
@@ -538,7 +538,7 @@ body {
   font-size: var(--text-1);
   font-weight: 500;
   color: var(--ink-2);
-  transition: background 0.2s ease, color 0.2s ease;
+  transition: background var(--flow-feedback) var(--flow-feedback-ease), color var(--flow-feedback) var(--flow-feedback-ease);
 }
 .gender-option:hover input:not(:checked) + span { background: var(--surface-2); color: var(--ink-1); }
 .gender-option input:checked + span { background: var(--ink-1); color: var(--bg); }
@@ -581,7 +581,7 @@ body {
   border-radius: 12px;
   padding: var(--space-4) var(--space-7);
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all var(--flow-feedback) var(--flow-feedback-ease);
 }
 
 .submit-btn:hover {
@@ -676,7 +676,7 @@ body {
   font-weight: 500;
   color: var(--ink-2);
   cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease;
+  transition: background var(--flow-feedback) var(--flow-feedback-ease), color var(--flow-feedback) var(--flow-feedback-ease);
 }
 .segmented button:hover { color: var(--ink-1); background: var(--surface-2); }
 .segmented button[aria-pressed='true'] { background: var(--ink-1); color: var(--bg); cursor: default; }
@@ -695,7 +695,7 @@ body {
   font-weight: 500;
   color: var(--ink-1);
   cursor: pointer;
-  transition: background 0.2s ease, border-color 0.2s ease;
+  transition: background var(--flow-feedback) var(--flow-feedback-ease), border-color var(--flow-feedback) var(--flow-feedback-ease);
 }
 .bar-action:hover { background: var(--surface-2); border-color: var(--line-2); }
 .bar-action:focus-visible { outline: 2px solid var(--ink-2); outline-offset: 2px; }
@@ -762,7 +762,7 @@ body {
   letter-spacing: var(--tracking-1);
   color: var(--ink-1);
   cursor: pointer;
-  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  transition: background var(--flow-feedback) var(--flow-feedback-ease), border-color var(--flow-feedback) var(--flow-feedback-ease), color var(--flow-feedback) var(--flow-feedback-ease);
 }
 .topic-button:hover,
 .chart-topics .context-toggle:hover { background: var(--surface-2); border-color: var(--line-2); }
@@ -830,7 +830,7 @@ body {
   font-family: var(--font-sans);
   color: var(--ink-1);
   cursor: pointer;
-  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  transition: background var(--flow-feedback) var(--flow-feedback-ease), border-color var(--flow-feedback) var(--flow-feedback-ease), color var(--flow-feedback) var(--flow-feedback-ease);
 }
 .luck-chip:hover { border-color: var(--line-2); background: var(--surface-2); }
 .luck-chip.is-selected { border-color: var(--ink-1); background: var(--ink-1); color: var(--bg); }
@@ -1062,7 +1062,7 @@ body {
   background: none;
   color: var(--ink-1);
   cursor: pointer;
-  transition: background 0.2s ease, border-color 0.2s ease;
+  transition: background var(--flow-feedback) var(--flow-feedback-ease), border-color var(--flow-feedback) var(--flow-feedback-ease);
 }
 :is(.pillar-identity, .luck-identity):hover { background: var(--surface-1); border-color: var(--line-1); }
 :is(.pillar-identity, .luck-identity):focus-visible { outline: 2px solid var(--ink-2); outline-offset: 3px; }
@@ -1174,7 +1174,7 @@ body {
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
-  transition: transform 0.3s ease;
+  transition: transform var(--flow-settle) var(--flow-spring);
 }
 
 /* Only a branch card answers a click (it opens its hidden stems), so only it lifts. Lifted,
@@ -1576,7 +1576,7 @@ body {
   overflow: hidden;
   min-height: var(--card-min-height);
   border-radius: inherit;
-  transition: box-shadow 0.3s ease;
+  transition: box-shadow var(--flow-feedback) var(--flow-feedback-ease);
 }
 
 /* At rest only the facing side is shown, drawn flat so its text stays crisp.
@@ -1629,11 +1629,11 @@ body {
 .card.branch {
   border-radius: 3px 3px 14px 14px;
   cursor: pointer;
-  transition: transform 0.3s ease, border-radius 0.35s ease;
+  transition: transform var(--flow-settle) var(--flow-spring), border-radius var(--flow-settle) var(--flow-spring);
 }
 .card.branch.is-expanded {
   border-radius: 3px 3px 0 0;
-  transition: transform 0.3s ease, border-radius 0.15s ease;
+  transition: transform var(--flow-settle) var(--flow-spring), border-radius var(--flow-settle) var(--flow-spring);
 }
 .card.branch.is-expanded:hover {
   transform: none;
@@ -1684,7 +1684,7 @@ body {
   pointer-events: none;
   opacity: 0;
   transform: translateX(-50%);
-  transition: opacity 0.2s ease;
+  transition: opacity var(--flow-feedback) var(--flow-feedback-ease);
 }
 .toast.is-shown { opacity: 1; }
 .toast.is-error { background: var(--ink-error); }
@@ -1700,8 +1700,7 @@ body {
   /* The only cue that a branch opens: at least 3:1 on every element card (WCAG 1.4.11). */
   opacity: 0.7;
   pointer-events: none;
-  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1),
-              opacity 0.3s ease;
+  transition: transform var(--flow-settle) var(--flow-spring), opacity var(--flow-feedback) var(--flow-feedback-ease);
 }
 .card.branch:hover .branch-expand-hint { opacity: 0.9; }
 .card.branch.is-expanded .branch-expand-hint {
@@ -1715,13 +1714,11 @@ body {
   opacity: 0;
   overflow: hidden;
   border-radius: 0 0 14px 14px;
-  transition: height 0.3s cubic-bezier(0.4, 0, 0.6, 1),
-              opacity 0.2s ease;
+  transition: height var(--flow-settle) var(--flow-spring), opacity var(--flow-feedback) var(--flow-feedback-ease);
 }
 .hidden-stems-panel.is-expanded {
   opacity: 1;
-  transition: height 0.45s cubic-bezier(0.4, 0, 0.2, 1),
-              opacity 0.35s ease 0.05s;
+  transition: height var(--flow-settle) var(--flow-spring), opacity var(--flow-feedback) var(--flow-feedback-ease) 0.05s;
 }
 
 /* Element-tinted panel backgrounds */
@@ -1994,7 +1991,7 @@ body {
   color: var(--ink-1);
   text-align: left;
   cursor: pointer;
-  transition: background 0.2s ease;
+  transition: background var(--flow-feedback) var(--flow-feedback-ease);
 }
 .role-choice:hover { background: var(--surface-1); }
 .role-choice:focus-visible { outline: 2px solid var(--ink-2); outline-offset: 2px; }
@@ -2086,7 +2083,7 @@ body {
   background: none;
   padding: var(--space-2) 0;
   cursor: pointer;
-  transition: color 0.2s ease, border-color 0.2s ease;
+  transition: color var(--flow-feedback) var(--flow-feedback-ease), border-color var(--flow-feedback) var(--flow-feedback-ease);
 }
 
 .reading-toggle:hover,
@@ -2122,7 +2119,7 @@ body {
   border: 1px solid var(--line-1);
   border-radius: 999px;
   cursor: pointer;
-  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  transition: background var(--flow-feedback) var(--flow-feedback-ease), border-color var(--flow-feedback) var(--flow-feedback-ease), color var(--flow-feedback) var(--flow-feedback-ease);
 }
 
 .relationship-chip:hover,
@@ -2226,7 +2223,7 @@ body {
 .relationship-arc-rise,
 .relationship-arc-foot {
   position: absolute;
-  transition: border-color 0.2s ease;
+  transition: border-color var(--flow-feedback) var(--flow-feedback-ease);
 }
 .relationship-arc-line {
   left: calc(var(--foot-from) * var(--arc-spread));
@@ -2326,7 +2323,9 @@ body {
 .chart-panel {
   container: panel / inline-size;
   background: var(--bg);
+  scrollbar-gutter: stable;
 }
+.chart-panel-body { display: flow-root; }
 .chart-panel-bar {
   display: flex;
   justify-content: flex-end;
@@ -2583,8 +2582,9 @@ kbd {
   display: grid;
   gap: var(--space-3);
   padding-top: var(--space-4);
-  border-top: 1px solid var(--line-1);
+  box-shadow: inset 0 1px var(--line-1);
 }
+.account-delete[hidden] { display: none; }
 .account-delete .bar-action { justify-self: start; }
 .bar-action.is-danger { color: var(--ink-error); border-color: var(--ink-error); }
 .account-status {
@@ -2818,7 +2818,7 @@ kbd {
   text-decoration: underline;
   text-decoration-color: transparent;
   text-underline-offset: var(--space-1);
-  transition: text-decoration-color 0.2s ease;
+  transition: text-decoration-color var(--flow-feedback) var(--flow-feedback-ease);
 }
 .canon-day-master-line::after {
   content: '';
@@ -2881,7 +2881,7 @@ kbd {
   width: 18px;
   height: 18px;
   color: var(--ink-2);
-  transition: transform 0.2s ease;
+  transition: transform var(--flow-settle) var(--flow-spring);
 }
 .canon-line-toggle[aria-expanded='true'] .canon-line-chevron { transform: rotate(180deg); }
 .canon-line-toggle:hover .canon-line-chevron { color: var(--ink-1); }
@@ -2924,7 +2924,7 @@ kbd {
   color: var(--ink-1);
   text-align: left;
   cursor: pointer;
-  transition: background 0.2s ease, border-color 0.2s ease;
+  transition: background var(--flow-feedback) var(--flow-feedback-ease), border-color var(--flow-feedback) var(--flow-feedback-ease);
 }
 .canon-link:hover { background: var(--surface-2); border-color: var(--line-2); }
 .canon-link:focus-visible { outline: 2px solid var(--ink-2); outline-offset: 2px; }
@@ -3014,13 +3014,9 @@ kbd {
 .canon-ring-on { fill: var(--ink-1); }
 
 /* The line a link just turned to, for a moment; without motion, it holds and goes. */
-@keyframes canon-arrive {
-  from { background: var(--surface-3); }
-  to { background: transparent; }
-}
-.canon-line.is-arrived { animation: canon-arrive 1.4s ease-out; }
+.canon-line { transition: background var(--flow-feedback) var(--flow-feedback-ease); }
+.canon-line.is-arrived { background: var(--surface-3); }
 @media (prefers-reduced-motion: reduce) {
-  .canon-line.is-arrived { animation-timing-function: steps(1, end); }
   .canon-day-master-line, .canon-line-chevron, .canon-link { transition: none; }
 }
 @media (max-width: 640px) {
@@ -3423,7 +3419,7 @@ body:has(> .compare-container:not(.hidden)) { padding: var(--space-4); }
   width: var(--card);
   transform: translateX(calc(-50% + var(--x) + var(--drag, 0px))) scale(var(--s));
   transform-origin: 50% 0;
-  transition: transform 280ms cubic-bezier(0.22, 0.8, 0.2, 1), visibility 280ms;
+  transition: transform var(--flow-settle) var(--flow-spring), visibility var(--flow-settle);
   cursor: pointer;
 }
 .today-day.is-centre { cursor: default; }

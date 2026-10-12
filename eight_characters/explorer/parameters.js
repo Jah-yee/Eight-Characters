@@ -528,8 +528,11 @@
   }
 
   function setOpen(open) {
-    pane.hidden = !open;
-    layout.classList.toggle('parameters-open', open);
+    window.EC_MOTION.layout(layout, () => {
+      pane.hidden = !open;
+      layout.classList.toggle('parameters-open', open);
+    }, ':scope > *');
+    if (open) window.EC_MOTION.reveal(pane);
     toggle.setAttribute('aria-expanded', String(open));
     toggle.classList.toggle('active', open);
     loadCatalogueWhenNeeded();

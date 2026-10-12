@@ -69,6 +69,7 @@ for (const profile of profiles) {
             return problems;
           }, name));
           await page.locator('[data-close-panel]').click();
+          await settled(page);
           assert.equal(await page.locator('#chart-panel').isVisible(), false);
         }
         assert.deepEqual(failures, []);
@@ -101,6 +102,7 @@ for (const profile of profiles) {
         assert.deepEqual(await placement(page), beside, name);
       }
       await page.locator('[data-close-panel]').click();
+      await settled(page);
       assert.equal(await page.locator('#chart-panel').isVisible(), false);
       assert.deepEqual(await placement(page), centred);
     });

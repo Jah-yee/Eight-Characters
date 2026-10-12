@@ -36,10 +36,14 @@
       document.title = t('compare_page_title', { first: heading(pair.a), second: heading(pair.b) });
     };
     const showSide = (side) => {
+      const changed = charts.dataset.shown !== side;
       charts.dataset.shown = side;
       shownSwitch.querySelectorAll('button[data-compare-side]').forEach((button) => {
         button.setAttribute('aria-pressed', String(button.dataset.compareSide === side));
       });
+      if (changed && window.innerWidth < 900 && frames[side]?.getClientRects().length) {
+        window.EC_MOTION.reveal(frames[side]);
+      }
     };
     const pressLanguage = (lang) => {
       languageSwitch.querySelectorAll('button[data-compare-lang]').forEach((button) => {
@@ -54,7 +58,7 @@
 
     // A new frame for each chart: a frame's first page replaces its blank one, so it adds
     // nothing to the history.
-    const show = (a, b, lang) => {
+    const show = (a, b, lang, keys = { a: 'a', b: 'b' }) => {
       hide();
       pair = { a, b };
       language = lang;
@@ -62,6 +66,7 @@
         const frame = document.createElement('iframe');
         frame.className = 'compare-frame';
         frame.dataset.side = side;
+        frame.dataset.flowKey = keys[side];
         frame.src = `${location.pathname}?embed=1#chart?${pair[side]}`;
         charts.append(frame);
         frames[side] = frame;
@@ -142,7 +147,8 @@
       const lang = await whenReady();
       if (lang === null) return;
       const shown = charts.dataset.shown === 'a' ? 'b' : 'a';
-      show(inLanguage(pair.b, lang), inLanguage(pair.a, lang), lang);
+      const keys = { a: frames.b.dataset.flowKey, b: frames.a.dataset.flowKey };
+      window.EC_MOTION.layout(charts, () => show(inLanguage(pair.b, lang), inLanguage(pair.a, lang), lang, keys), ':scope > .compare-frame');
       showSide(shown);
       onAddress(address());
     });

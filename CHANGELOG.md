@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.52.0
+
+### Changed
+
+- Apply the selected Tactile version of natural flow across the application: one
+  shared spring, continuous reversals, coordinated spatial changes, native dialog
+  motion, coherent information updates and complete reduced-motion support.
+- Day-topic changes use the current Today answer; card, disclosure and day movement
+  preserve their displayed state through interruptions. Toast text remains during exit.
+- Document the motion contract in `docs/Natural-Flow.md` and add browser regressions
+  for reversals, responsive disclosures, panel continuity and reduced motion.
+
 ## 0.51.1
 
 ### Fixed

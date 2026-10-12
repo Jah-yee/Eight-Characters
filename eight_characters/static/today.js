@@ -90,6 +90,7 @@
     // The press on the days being followed, if any (the gestures are below).
     let drag = null;
     const dropDrag = () => {
+      if (drag?.moving) releaseDays();
       drag = null;
       days.classList.remove('is-dragging');
       days.style.removeProperty('--drag');
@@ -99,6 +100,7 @@
     // nothing, though another run is drawn before it ends.
     const cancelDrag = () => {
       if (drag === null) return;
+      if (drag.moving) releaseDays();
       drag.drags = false;
       drag.moving = false;
       days.classList.remove('is-dragging');
@@ -174,6 +176,14 @@
     const move = (changes, method = 'replaceState') => {
       const next = { ...state, ...changes };
       go(address(next), method);
+      // Topics select material already in this day's answer; they are not inputs to
+      // /api/today. An answer on its way draws the latest topic when it arrives.
+      if (Object.keys(changes).every((key) => key === 'topic')) {
+        state = next;
+        if (answer !== null) keepingFocus(() => { drawTopics(); drawPanel(); });
+        else if (next.topic === null) drawPanel();
+        return;
+      }
       show(next);
     };
 
@@ -334,6 +344,35 @@
     // step moves the days rather than drawing them anew; one coming into view enters
     // from a step beyond. ──
     const dayNodes = new Map();
+    const placeDay = (node, place) => {
+      if (!node.getClientRects().length) {
+        node.dataset.place = place;
+        node.style.removeProperty('--flow-day-x'); node.style.removeProperty('--flow-day-scale');
+        return;
+      }
+      const transform = getComputedStyle(node).transform;
+      const before = transform === 'none' ? new DOMMatrix() : new DOMMatrix(transform);
+      node.style.removeProperty('--flow-day-x'); node.style.removeProperty('--flow-day-scale');
+      node.dataset.place = place;
+      const targetTransform = getComputedStyle(node).transform;
+      const target = targetTransform === 'none' ? new DOMMatrix() : new DOMMatrix(targetTransform);
+      window.EC_MOTION.spring(node, 'day', {
+        from: { x: before.e, scale: before.a }, to: { x: target.e, scale: target.a }, rebase: true,
+        write: ({ x, scale }) => {
+          node.style.setProperty('--flow-day-x', `${x}px`); node.style.setProperty('--flow-day-scale', String(scale));
+        },
+        complete: () => { node.style.removeProperty('--flow-day-x'); node.style.removeProperty('--flow-day-scale'); },
+      });
+    };
+    const releaseDays = () => {
+      const poses = [...dayNodes.values()].filter((node) => node.getClientRects().length)
+        .map((node) => [node, new DOMMatrix(getComputedStyle(node).transform)]);
+      days.style.removeProperty('--drag');
+      for (const [node, pose] of poses) {
+        node.style.setProperty('--flow-day-x', `${pose.e}px`); node.style.setProperty('--flow-day-scale', String(pose.a));
+        placeDay(node, node.dataset.place);
+      }
+    };
     const dayMarkup = (day) => `${cards(day.pillar, 'large')}
       <span class="today-day-when"><span class="today-day-weekday">${esc(weekdayOf(day.date))}</span>
         <span class="today-day-date">${esc(dayMonthOf(day.date))}</span></span>
@@ -377,7 +416,7 @@
       // Laid out where they enter from, then moved: the days slide in.
       if (entering && moved !== 0) void daysTrack.offsetWidth;
       near.forEach(({ offset }, date) => {
-        dayNodes.get(date).dataset.place = placeOf(offset);
+        placeDay(dayNodes.get(date), placeOf(offset));
       });
       return true;
     };
@@ -668,17 +707,15 @@
           }).join('')}</tbody>
         </table>`;
     };
-    const drawPanel = () => {
-      if (state.topic === null) {
-        panel.classList.add('hidden');
-        view.classList.remove('has-panel');
-        detail.innerHTML = '';
-        return;
-      }
-      detail.innerHTML = topicMarkup(state.topic);
-      panel.classList.remove('hidden');
-      view.classList.add('has-panel');
-    };
+    const drawPanel = () => window.EC_MOTION.layout(view, () => {
+      const open = state.topic !== null;
+      detail.classList.toggle('hidden', !open);
+      if (open) detail.innerHTML = topicMarkup(state.topic);
+      if (open) view.classList.add('has-panel');
+      window.EC_MOTION.panel(panel, open);
+      if (!open) view.classList.remove('has-panel');
+      if (!open) window.EC_MOTION.retire(detail);
+    }, ':scope > .chart-column');
     panel.addEventListener('click', (event) => {
       if (event.target.closest('[data-close-today-panel]')) closeTopic();
     });
@@ -977,6 +1014,7 @@
         }
         if (!drag.drags || Math.abs(dx) < DRAG) return;
         drag.moving = true;
+        dayNodes.forEach((node) => window.EC_MOTION.cancel(node, 'day'));
         daysTrack.setPointerCapture(drag.id);
         days.classList.add('is-dragging');
       }

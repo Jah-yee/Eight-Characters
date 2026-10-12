@@ -3,6 +3,8 @@
 // ═══════════════════════════════════════════════════════
 
 document.addEventListener('DOMContentLoaded', () => {
+  const motion = window.EC_MOTION;
+  if (!motion) throw new Error('Natural flow is unavailable.');
   const i18n = window.EC_I18N;
   if (!i18n) {
     return;
@@ -629,8 +631,10 @@ document.addEventListener('DOMContentLoaded', () => {
     ].join(' · ');
     const solarTime = describeSolarTime(pillarsData.solar_time, birth);
 
+    const freshBirth = shown === null || request.date !== shown.request.date || request.time !== shown.request.time
+      || request.location.latitude !== shown.request.location.latitude || request.location.longitude !== shown.request.location.longitude;
     renderChart(chartData, Object.fromEntries(
-      ['hour', 'day', 'month', 'year'].map((name) => [name, requiredTranslation('pillar_' + name)])));
+      ['hour', 'day', 'month', 'year'].map((name) => [name, requiredTranslation('pillar_' + name)])), freshBirth && !embedded);
     // The tab stop stays on its card, or on the Year's when the chart has none such yet:
     // the luck pillar's are drawn after.
     setKeyCard(cardAt(keyCard) ?? cardAt({ pillar: 'year', component: keyCard.component }));
@@ -1077,11 +1081,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // The panel is open while any of its sections is: the modules show and hide their
   // own sections, and the panel follows them.
-  const panelSections = [...chartPanel.querySelectorAll(':scope > section')];
+  const panelSections = [...chartPanel.querySelectorAll(':scope > .chart-panel-body > section')];
   const syncPanel = () => {
     const open = panelSections.some((section) => !section.classList.contains('hidden'));
-    chartPanel.classList.toggle('hidden', !open);
-    chartView.classList.toggle('has-panel', open);
+    motion.layout(chartView, () => {
+      if (open) chartView.classList.add('has-panel');
+      motion.panel(chartPanel, open);
+      if (!open) chartView.classList.remove('has-panel');
+    }, ':scope > .chart-column');
     // From 1200px wide the chart column moves over as the panel opens beside it.
     followCardHint();
   };
@@ -1129,6 +1136,10 @@ document.addEventListener('DOMContentLoaded', () => {
       if (card.classList.contains('is-flipped') === flip) return;
       if (animate) flipCard(card);
       else {
+        const inner = card.querySelector('.card-inner');
+        motion.cancel(inner, 'flip');
+        card.classList.remove('is-turning');
+        inner.style.height = ''; inner.style.transform = '';
         card.classList.toggle('is-flipped', flip);
         labelCard(card);
       }
@@ -1217,28 +1228,14 @@ document.addEventListener('DOMContentLoaded', () => {
     branchCard.classList.add('is-expanded');
     branchCard.setAttribute('aria-expanded', 'true');
     panel.classList.add('is-expanded');
-    if (!animate) {
-      panel.style.height = 'auto';
-      return;
-    }
-    panel.style.height = panel.scrollHeight + 'px';
-    // Once open, the panel takes its content's height at any width. The opacity ends
-    // first, so only the panel's own height ending counts.
-    const opened = (event) => {
-      if (event.target !== panel || event.propertyName !== 'height') return;
-      panel.removeEventListener('transitionend', opened);
-      if (panel.classList.contains('is-expanded')) panel.style.height = 'auto';
-    };
-    panel.addEventListener('transitionend', opened);
+    motion.disclose(panel, true, animate);
   };
 
   const collapsePanel = (panel, branchCard) => {
-    panel.style.height = panel.scrollHeight + 'px';
-    panel.offsetHeight; // force reflow
     panel.classList.remove('is-expanded');
     branchCard.classList.remove('is-expanded');
     branchCard.setAttribute('aria-expanded', 'false');
-    panel.style.height = '0';
+    motion.disclose(panel, false);
   };
 
   // ── Cards: long press flips to ten gods, quick click toggles hidden stems ──
@@ -1285,6 +1282,7 @@ document.addEventListener('DOMContentLoaded', () => {
     else hideCardHint();
   };
   const aboveCards = new ResizeObserver(followCardHint);
+  motion.onFrame(followCardHint);
   ['.chart-bar', '#day-master-context', '#luck-ribbon'].forEach((selector) => aboveCards.observe(chartView.querySelector(selector)));
   aboveCards.observe(pillarsContainer);
   pillarsContainer.addEventListener('pointerover', (event) => {
@@ -1308,27 +1306,56 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   // The facing side sizes the card, so a taller back grows the card as it turns.
+  let cardHeightFrame = null;
+  let cardHeights = new WeakMap();
+  const naturalCardHeights = (now) => {
+    if (Number.isFinite(now) && cardHeightFrame === now) return cardHeights;
+    // Measure the complete facing-row layout without changing the live document's
+    // height or scrollbar bounds. The hidden measuring tree uses the same ancestors,
+    // stylesheet and current width, and exists only for this synchronous read.
+    const cards = [...pillarsContainer.querySelectorAll('.card')];
+    const measured = pillarsContainer.cloneNode(true);
+    measured.inert = true; measured.setAttribute('aria-hidden', 'true');
+    Object.assign(measured.style, { position: 'fixed', left: '-10000px', top: '0', right: 'auto', bottom: 'auto',
+      width: getComputedStyle(pillarsContainer).width, height: 'auto', margin: '0', opacity: '0', pointerEvents: 'none' });
+    const measuredCards = [...measured.querySelectorAll('.card')];
+    for (const card of measuredCards) {
+      card.classList.remove('is-turning');
+      const inner = card.querySelector('.card-inner');
+      inner.style.height = ''; inner.style.transform = '';
+    }
+    pillarsContainer.parentElement.append(measured);
+    try {
+      cardHeights = new WeakMap(cards.map((card, index) => [card.querySelector('.card-inner'),
+        Number.parseFloat(getComputedStyle(measuredCards[index].querySelector('.card-inner')).height)]));
+    } finally { measured.remove(); }
+    cardHeightFrame = now;
+    return cardHeights;
+  };
   const flipCard = (card) => {
     const inner = card.querySelector('.card-inner');
-    inner.getAnimations().forEach((animation) => animation.cancel());
+    const from = motion.value(inner, 'flip') ?? {
+      angle: card.classList.contains('is-flipped') ? 180 : 0,
+      height: inner.offsetHeight,
+    };
+    from.height = Number.parseFloat(getComputedStyle(inner).height);
     card.classList.remove('is-turning');
-    const fromHeight = inner.getBoundingClientRect().height;
+    inner.style.height = '';
     const flipped = card.classList.toggle('is-flipped');
     labelCard(card);
-    if (reducedMotion.matches) return;
-    const toHeight = inner.getBoundingClientRect().height;
     card.classList.add('is-turning');
-    const turn = inner.animate(
-      [
-        { height: `${fromHeight}px`, transform: `rotateY(${flipped ? 0 : 180}deg)` },
-        { height: `${toHeight}px`, transform: `rotateY(${flipped ? 180 : 360}deg)` },
-      ],
-      { duration: 600, easing: 'cubic-bezier(0.4, 0, 0.2, 1)', fill: 'forwards' }
-    );
-    turn.onfinish = () => {
-      card.classList.remove('is-turning');
-      turn.cancel();
-    };
+    motion.spring(inner, 'flip', {
+      from, to: (now) => ({ angle: flipped ? 180 : 0, height: naturalCardHeights(now).get(inner) }), rebase: true,
+      write: (next) => {
+        inner.style.height = `${Math.max(0, next.height)}px`;
+        inner.style.transform = `rotateY(${next.angle}deg)`;
+      },
+      complete: () => {
+        card.classList.remove('is-turning');
+        inner.style.height = '';
+        inner.style.transform = '';
+      },
+    });
   };
 
   pillarsContainer.addEventListener('pointerdown', (e) => {
@@ -2453,12 +2480,21 @@ document.addEventListener('DOMContentLoaded', () => {
   let toastTimer = null;
   const showToast = (text, isError) => {
     clearTimeout(toastTimer);
+    const initialOpacity = Number(getComputedStyle(toast).opacity);
     toast.textContent = text;
     toast.classList.toggle('is-error', isError);
     toast.classList.add('is-shown');
+    const fade = (visible) => motion.spring(toast, 'toast', {
+      from: { progress: visible ? initialOpacity : Number(getComputedStyle(toast).opacity) }, to: { progress: visible ? 1 : 0 },
+      write: ({ progress }) => {
+        toast.style.opacity = String(Math.max(0, Math.min(1, progress)));
+        toast.style.transform = `translate(-50%, ${(1 - progress) * 8}px)`;
+      },
+      complete: () => { if (!visible) { toast.classList.remove('is-shown'); toast.textContent = ''; } },
+    });
+    fade(true);
     toastTimer = setTimeout(() => {
-      toast.classList.remove('is-shown');
-      toast.textContent = '';
+      fade(false);
     }, isError ? 6000 : 3000);
   };
   copyLinkBtn.addEventListener('click', async () => {
@@ -2534,7 +2570,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const goToReading = (path, part) => {
     goToTopic(path);
     if (!part) return;
-    const section = [...chartPanel.querySelectorAll(':scope > section:not(.hidden)')].at(-1);
+    const section = [...chartPanel.querySelectorAll(':scope > .chart-panel-body > section:not(.hidden)')].at(-1);
     if (!section || !canonReadings.arrive(section, part, true)) throw linkError('topic');
   };
   const ROLES = ['friend', 'rob_wealth', 'eating_god', 'hurting_officer', 'indirect_wealth', 'direct_wealth',
@@ -2652,7 +2688,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // `plainNames` are the pillars' plain names in the page language; the chart's own
 // labels are their poetic names.
-function renderChart(data, plainNames) {
+function renderChart(data, plainNames, enter = false) {
   const container = document.getElementById('pillars');
   container.innerHTML = '';
 
@@ -2663,7 +2699,6 @@ function renderChart(data, plainNames) {
     const pillar = document.createElement('div');
     pillar.className = 'pillar';
     pillar.dataset.pillar = pillarKeys[i];
-    pillar.style.animationDelay = [0.5, 0.35, 0.2, 0.05][i] + 's';
 
     // Each card is named by its pillar and its facing side (see labelCard). A branch is
     // a button: it opens its hidden stems.
@@ -2719,6 +2754,7 @@ function renderChart(data, plainNames) {
     `;
 
     container.appendChild(pillar);
+    if (enter) window.EC_MOTION.reveal(pillar, { delay: i * 22 });
   });
 }
 

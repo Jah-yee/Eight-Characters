@@ -65,6 +65,30 @@ for (const profile of profiles) {
   describe(`${engineName} / ${profile.name} / compare`, { concurrency: false }, () => {
     const check = (name, run) => it(name, { timeout: 90000 }, () => withPage(profile, run));
 
+    if (profile.name === 'desktop') check('a rapid second swap retains chart momentum across frame replacement', async (page) => {
+      await compareWithSecond(page);
+      await bothDrawn(page);
+      await settled(page);
+      await page.locator('#compare-swap').click();
+      await page.waitForFunction(() => document.querySelector('.compare-frame[data-flow-key="a"][data-flow-layout]'));
+      await page.waitForTimeout(100);
+      const drift = await page.evaluate(() => new Promise((resolve) => {
+        const charts = document.querySelector('#compare-charts');
+        const observer = new MutationObserver(() => {
+          const frame = charts.querySelector('.compare-frame[data-flow-key="a"]');
+          const start = frame.getBoundingClientRect().x;
+          observer.disconnect();
+          requestAnimationFrame(() => resolve(frame.getBoundingClientRect().x - start));
+        });
+        observer.observe(charts, { childList: true });
+        document.querySelector('#compare-swap').click();
+      }));
+      // The first swap moves chart a rightward. Reversal decelerates that motion
+      // before it turns left; replacing the frame must not restart from rest.
+      assert.ok(drift > .1, `The reversed chart lost its rightward momentum: ${drift}px`);
+      await settled(page);
+    });
+
     check('Compare asks for the second birth, naming the first, and Cancel goes back to it', async (page) => {
       await openChart(page, { lang: 'en' });
       const first = await page.locator('#chart-date').textContent();

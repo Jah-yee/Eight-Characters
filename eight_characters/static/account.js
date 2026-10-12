@@ -132,7 +132,7 @@
 
     // Everything the dialog and the button say that depends on the step, the mode or
     // the account, in the page's language.
-    const refresh = () => {
+    const refresh = () => window.EC_MOTION.layout(document.body, () => {
       button.dataset.i18n = account ? 'account_title' : 'account_sign_in';
       button.textContent = t(button.dataset.i18n);
       start.classList.toggle('hidden', step !== 'start');
@@ -158,7 +158,7 @@
           choice.setAttribute('aria-pressed', String(choice.dataset.accountLang === account.language));
         });
       }
-    };
+    }, '#account-dialog');
 
     // ── The check that a person asks for the code (Cloudflare Turnstile) ──
     // Its script loads when it is first needed, so the start page loads nothing from
@@ -234,7 +234,9 @@
     };
     // Deleting the account starts closed, and empty, each time.
     const closeDeleting = () => {
-      deleteForm.classList.add('hidden');
+      deleteForm.hidden = true;
+      deleteForm.classList.remove('hidden');
+      window.EC_MOTION.disclose(deleteForm, false, false);
       deleteOpen.setAttribute('aria-expanded', 'false');
       deleteEmail.value = '';
       setStatus(deleteStatus, '');
@@ -691,8 +693,8 @@
     }));
 
     deleteOpen.addEventListener('click', () => {
-      const opening = deleteForm.classList.contains('hidden');
-      deleteForm.classList.toggle('hidden', !opening);
+      const opening = deleteOpen.getAttribute('aria-expanded') !== 'true';
+      window.EC_MOTION.disclose(deleteForm, opening, true, () => { deleteForm.hidden = !opening; });
       deleteOpen.setAttribute('aria-expanded', String(opening));
       if (opening) deleteEmail.focus();
     });

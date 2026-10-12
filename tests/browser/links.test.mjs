@@ -25,7 +25,7 @@ function onScreen(page) {
   return page.evaluate(() => {
     const visible = (node) => node && !node.closest('.hidden');
     // The panel's last open section: a chosen relationship's detail follows their list.
-    const detail = [...document.querySelectorAll('#chart-panel > section')].filter(visible).at(-1);
+    const detail = [...document.querySelectorAll('#chart-panel > .chart-panel-body > section')].filter(visible).at(-1);
     return {
       view: visible(document.getElementById('chart-view')) ? 'chart' : 'form',
       heading: document.getElementById('chart-date').textContent,
