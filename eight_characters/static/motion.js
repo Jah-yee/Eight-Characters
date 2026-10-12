@@ -193,6 +193,14 @@
       if (!next.width || !next.height) { element.removeAttribute('data-flow-layout'); continue; }
       const from = { x: old.left - next.left, y: old.top - next.top,
         sx: old.width / next.width, sy: old.height / next.height };
+      const transform = getComputedStyle(element).transform;
+      if (transform !== 'none') {
+        const native = new DOMMatrix(transform);
+        // Individual scale precedes the actor's native transform. Its translation
+        // is scaled too, so the inverse must remove that additional displacement.
+        from.x -= native.e * (from.sx - 1);
+        from.y -= native.f * (from.sy - 1);
+      }
       if (Math.abs(from.x) < .5 && Math.abs(from.y) < .5
         && Math.abs(from.sx - 1) < .001 && Math.abs(from.sy - 1) < .001
         && !channels.get(element)?.get('layout')?.active) { element.removeAttribute('data-flow-layout'); continue; }

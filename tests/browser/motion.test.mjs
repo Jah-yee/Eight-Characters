@@ -2,10 +2,11 @@
 import {
   assert, describe, it, engineName, profiles, openChart, settled, showDisplay, withPage,
 } from './chart-helpers.mjs';
+import { stubTurnstile } from './account-helpers.mjs';
 
 for (const profile of profiles) {
   describe(`${engineName} / ${profile.name} / natural flow`, { concurrency: false }, () => {
-    const check = (name, run) => it(name, { timeout: 90000 }, () => withPage(profile, run));
+    const check = (name, run, options) => it(name, { timeout: 90000 }, () => withPage(profile, run, options));
 
     check('a reversed card keeps its current angle and height', async (page) => {
       await openChart(page);
@@ -177,6 +178,25 @@ for (const profile of profiles) {
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
       assert.equal(await page.locator('[data-flow-layout]').count(), 0);
     });
+
+    check('changing account mode during dialog entry preserves the displayed rectangle', async (page) => {
+      await stubTurnstile(page);
+      await page.goto(process.env.EC_BASE_URL);
+      await page.locator('#account-btn').click();
+      await page.waitForTimeout(60);
+      const rectangle = await page.locator('#account-mode').evaluate((button) => {
+        const dialog = document.querySelector('#account-dialog');
+        const before = dialog.getBoundingClientRect();
+        const native = new DOMMatrix(getComputedStyle(dialog).transform);
+        button.click();
+        const after = dialog.getBoundingClientRect();
+        return { nativeY: native.f, before: { x: before.x, y: before.y, height: before.height },
+          after: { x: after.x, y: after.y, height: after.height } };
+      });
+      assert.ok(Math.abs(rectangle.nativeY) > .1, 'the account mode changes during its native entrance');
+      for (const key of ['x', 'y', 'height']) assert.ok(Math.abs(rectangle.before[key] - rectangle.after[key]) < .5, key);
+      await settled(page);
+    }, { signedIn: false });
 
     check('the first reading disclosure starts with no height or padding jump', async (page) => {
       await openChart(page);
