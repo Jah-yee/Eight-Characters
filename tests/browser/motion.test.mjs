@@ -100,6 +100,29 @@ for (const profile of profiles) {
       assert.equal(state.stopped, true);
     });
 
+    check('reopening a resizing drawer preserves its displayed height', async (page) => {
+      await openChart(page);
+      await page.locator('[data-context="season"]').click();
+      await settled(page);
+      // A taller viewport leaves both actual reading lengths uncapped.
+      await page.setViewportSize({ width: profile.viewport.width, height: 2000 });
+      await page.locator('[data-context="roots"]').click();
+      await page.waitForFunction(() => window.EC_MOTION.value(document.querySelector('#chart-panel'), 'panel-size') !== null);
+      const size = await page.locator('#chart-panel').evaluate(async (panel) => {
+        const before = panel.getBoundingClientRect().height;
+        panel.querySelector('[data-close-panel]').click();
+        await new Promise(queueMicrotask);
+        const closed = panel.getBoundingClientRect().height;
+        document.querySelector('[data-context="season"]').click();
+        await new Promise(queueMicrotask);
+        return { before, closed, reopened: panel.getBoundingClientRect().height };
+      });
+      assert.ok(Math.abs(size.before - size.closed) < .5);
+      assert.ok(Math.abs(size.closed - size.reopened) < .5);
+      await settled(page);
+      assert.equal(await page.locator('#chart-panel').evaluate((panel) => panel.style.height), '');
+    });
+
     check('changing language updates the same birth without replaying pillar entrances', async (page) => {
       await openChart(page);
       await page.locator('#chart-language [data-chart-lang="fi"]').click();

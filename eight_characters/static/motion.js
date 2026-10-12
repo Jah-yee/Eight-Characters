@@ -226,21 +226,22 @@
         if (state.open && !element.closest('.hidden')) state.box = element.getBoundingClientRect();
       }).observe(element);
     }
-    if (state.open === open) {
-      if (open && state.box !== null) {
-        const fromHeight = value(element, 'panel-size')?.height ?? state.box.height;
-        element.style.height = '';
-        const targetHeight = element.getBoundingClientRect().height;
-        if (Math.abs(targetHeight - fromHeight) > .5) {
-          spring(element, 'panel-size', {
-            from: { height: fromHeight }, to: { height: targetHeight },
-            write: ({ height }) => { element.style.height = `${Math.max(0, height)}px`; },
-            complete: () => { element.style.height = ''; state.box = element.getBoundingClientRect(); cancel(element, 'panel-size'); },
-          });
-        }
+    const resize = (fromHeight) => {
+      element.style.height = state.originalHeight;
+      const targetHeight = element.getBoundingClientRect().height;
+      if (Math.abs(targetHeight - fromHeight) > .5) {
+        spring(element, 'panel-size', {
+          from: { height: fromHeight }, to: { height: targetHeight },
+          write: ({ height }) => { element.style.height = `${Math.max(0, height)}px`; },
+          complete: () => { element.style.height = state.originalHeight; state.box = element.getBoundingClientRect(); cancel(element, 'panel-size'); },
+        });
       }
+    };
+    if (state.open === open) {
+      if (open && state.box !== null) resize(value(element, 'panel-size')?.height ?? state.box.height);
       return;
     }
+    const reopeningHeight = open && state.saved ? element.getBoundingClientRect().height : null;
     const sizing = value(element, 'panel-size');
     const heldHeight = sizing === null ? null : element.getBoundingClientRect().height;
     cancel(element, 'panel-size');
@@ -253,14 +254,17 @@
         if (child.classList.contains('hidden')) child.replaceChildren();
       }
       state.retired.clear();
-      if (state.saved) Object.assign(element.style, state.saved);
+      if (state.saved) { Object.assign(element.style, state.saved); state.saved = null; }
       element.removeAttribute('data-flow-leaving'); element.classList.remove('hidden');
+      if (reopeningHeight !== null) resize(reopeningHeight);
       state.box = element.getBoundingClientRect();
     } else {
       const current = element.getBoundingClientRect();
+      const height = heldHeight ?? (state.box === null ? current.height : state.box.height);
+      const y = Number.parseFloat(element.style.getPropertyValue('--flow-enter-y') || '0');
       const box = { left: current.left - Number.parseFloat(element.style.getPropertyValue('--flow-enter-x') || '0'),
-        top: current.top - Number.parseFloat(element.style.getPropertyValue('--flow-enter-y') || '0'),
-        width: current.width, height: heldHeight ?? (state.box === null ? current.height : state.box.height) };
+        top: (window.innerWidth < 1200 ? current.bottom - height : current.top) - y,
+        width: current.width, height };
       state.saved ??= Object.fromEntries(['position', 'left', 'top', 'right', 'bottom', 'width', 'height', 'margin']
         .map((key) => [key, element.style[key]]));
       element.setAttribute('data-flow-leaving', '');
