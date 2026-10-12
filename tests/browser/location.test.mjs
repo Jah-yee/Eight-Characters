@@ -130,6 +130,43 @@ for (const profile of profiles) {
       }
     });
 
+    check('picking a place keeps the form still and uses the same quiet ink in Settings', async (page) => {
+      await stubSuggestions(page);
+      for (const colorScheme of ['light', 'dark']) {
+        await page.emulateMedia({ colorScheme });
+        for (const lang of ['en', 'fi']) {
+          await page.goto(baseURL);
+          await page.locator(`[data-lang="${lang}"]`).click();
+          await page.evaluate(() => document.fonts.ready);
+          const geometry = () => page.locator('#date, #time, #location, .gender-group, #create-chart-btn')
+            .evaluateAll((elements) => elements.map((element) => {
+              const { x, y, width, height } = element.getBoundingClientRect();
+              return { x, y, width, height };
+            }));
+          const before = await geometry();
+          await search(page, 'Helsinki', HELSINKI.display);
+          const suggestionInk = await page.locator('.location-suggestion-meta').first()
+            .evaluate((element) => getComputedStyle(element).color);
+          await page.locator('#location').press('ArrowDown');
+          await page.locator('#location').press('Enter');
+          assert.equal((await formState(page)).found, true);
+          assert.deepEqual(await geometry(), before, `${lang} / ${colorScheme}: picking must not move the form`);
+          const pickedInk = await page.locator('#location-status').evaluate((element) => getComputedStyle(element).color);
+          assert.equal(pickedInk, suggestionInk, 'picked coordinates use the suggestions’ secondary ink');
+          await page.locator('#location').fill('');
+          assert.deepEqual(await geometry(), before, 'clearing must not move the form');
+
+          await page.goto(new URL('/#settings', baseURL).href);
+          await page.locator('#settings-view').waitFor({ state: 'visible' });
+          await page.waitForFunction(() => !document.getElementById('settings-view').hasAttribute('aria-busy'));
+          await page.locator('#settings-location').fill('Helsinki');
+          await page.locator('#settings-location-suggestions .location-suggestion').click();
+          assert.equal(await page.locator('#settings-location-status').evaluate((element) => getComputedStyle(element).color),
+            pickedInk, 'Settings uses the same location ink');
+        }
+      }
+    });
+
     check('places sharing a name are told apart and the picked one is charted', async (page) => {
       await stubSuggestions(page);
       await page.goto(baseURL);
