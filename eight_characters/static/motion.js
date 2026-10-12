@@ -188,14 +188,14 @@
       }
       element.removeAttribute('data-flow-layout');
       ['x', 'y', 'sx', 'sy'].forEach((key) => element.style.removeProperty(`--flow-layout-${key}`));
+      element.setAttribute('data-flow-layout', '');
       const next = element.getBoundingClientRect();
-      if (!next.width || !next.height) continue;
+      if (!next.width || !next.height) { element.removeAttribute('data-flow-layout'); continue; }
       const from = { x: old.left - next.left, y: old.top - next.top,
         sx: old.width / next.width, sy: old.height / next.height };
       if (Math.abs(from.x) < .5 && Math.abs(from.y) < .5
         && Math.abs(from.sx - 1) < .001 && Math.abs(from.sy - 1) < .001
-        && !channels.get(element)?.get('layout')?.active) continue;
-      element.setAttribute('data-flow-layout', '');
+        && !channels.get(element)?.get('layout')?.active) { element.removeAttribute('data-flow-layout'); continue; }
       spring(element, 'layout', { from, to: { x: 0, y: 0, sx: 1, sy: 1 }, rebase: true,
         write: ({ x, y, sx, sy }) => {
           element.style.setProperty('--flow-layout-x', `${x}px`); element.style.setProperty('--flow-layout-y', `${y}px`);
@@ -210,13 +210,29 @@
     }
     return result;
   };
-  const scroll = (element, left, top = element.scrollTop) => spring(element, 'scroll', {
-    from: { left: element.scrollLeft, top: element.scrollTop }, to: { left, top },
-    write: (next) => { element.scrollLeft = next.left; element.scrollTop = next.top; },
-    complete: () => cancel(element, 'scroll'),
-  });
+  const scroll = (element, left, top = element.scrollTop) => {
+    const bounded = (value, maximum) => Math.max(0, Math.min(maximum, value));
+    const bounds = () => ({ left: Math.max(0, element.scrollWidth - element.clientWidth),
+      top: Math.max(0, element.scrollHeight - element.clientHeight) });
+    const maximum = bounds();
+    spring(element, 'scroll', {
+      from: { left: element.scrollLeft, top: element.scrollTop }, rebase: true,
+      to: { left: bounded(left, maximum.left), top: bounded(top, maximum.top) },
+      write: (next) => {
+        const maximum = bounds();
+        const channel = channels.get(element).get('scroll');
+        for (const key of ['left', 'top']) {
+          const position = bounded(next[key], maximum[key]);
+          if (position !== next[key]) { channel.value[key] = position; channel.velocity[key] = 0; }
+          channel.target[key] = bounded(channel.target[key], maximum[key]);
+          element[key === 'left' ? 'scrollLeft' : 'scrollTop'] = position;
+        }
+      },
+      complete: () => cancel(element, 'scroll'),
+    });
+  };
   const interruptScroll = (event) => {
-    if (event.type === 'keydown' && !['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) return;
+    if (event.type === 'keydown' && !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) return;
     for (const channel of [...moving]) {
       if (channels.get(channel.owner)?.get('scroll') === channel && channel.owner.contains(event.target)) {
         cancel(channel.owner, 'scroll');
@@ -378,6 +394,9 @@
   css.setProperty('--flow-feedback', `${model.feedback}ms`);
   preference.addEventListener('change', () => { if (preference.matches) finish(); });
   window.addEventListener('beforeprint', finish);
+  // Direct viewport resizing takes over from animation. Old coordinate offsets
+  // must not survive into a different responsive layout or constrain its sizes.
+  window.addEventListener('resize', finish);
   window.EC_MOTION = Object.freeze({ model, spring, value, cancel, disclose, reveal, layout, scroll, panel, retire, finish,
     onFrame: (listener) => { frameListeners.add(listener); return () => frameListeners.delete(listener); },
     reduced: () => preference.matches, active: () => moving.size > 0 });

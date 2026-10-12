@@ -17,6 +17,7 @@
 /* Native dialog close semantics stay immediate; discrete display/overlay transitions
    keep only the visual exit alive, without delaying focus or request cancellation. */
 dialog {
+  transform-origin: 0 0;
   opacity: 0;
   transform: translateY(20px) scale(.975);
   transition: opacity var(--flow-settle) var(--flow-spring),

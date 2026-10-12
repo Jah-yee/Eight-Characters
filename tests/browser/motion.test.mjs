@@ -135,6 +135,49 @@ for (const profile of profiles) {
       assert.equal(await page.locator('.pillar').evaluateAll((nodes) => nodes.every((node) => getComputedStyle(node).animationName === 'none')), true);
     });
 
+    check('scroll targets stay within native bounds and reverse from the viewport', async (page) => {
+      await openChart(page);
+      await page.locator('[data-context="season"]').click();
+      await settled(page);
+      await page.locator('#chart-panel').evaluate((panel) => window.EC_MOTION.scroll(panel, 0, panel.scrollHeight + 300));
+      await page.waitForTimeout(170);
+      const position = await page.locator('#chart-panel').evaluate((panel) => {
+        const maximum = panel.scrollHeight - panel.clientHeight;
+        const held = window.EC_MOTION.value(panel, 'scroll')?.top ?? panel.scrollTop;
+        const before = panel.scrollTop;
+        window.EC_MOTION.scroll(panel, 0, 0);
+        return { maximum, held, before, after: panel.scrollTop };
+      });
+      assert.ok(position.held <= position.maximum);
+      assert.ok(position.held >= 0);
+      assert.equal(position.before, position.after);
+      await settled(page);
+      assert.equal(await page.locator('#chart-panel').evaluate((panel) => panel.scrollTop), 0);
+    });
+
+    check('horizontal arrow input takes control of ribbon centering', async (page) => {
+      await openChart(page, { gender: 'female' });
+      await page.locator('[data-luck-show="on"]').click();
+      await settled(page);
+      for (const key of ['ArrowLeft', 'ArrowRight']) {
+        const stopped = await page.locator('.luck-track').evaluate((track, key) => {
+          window.EC_MOTION.scroll(track, 50, 0);
+          track.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+          return window.EC_MOTION.value(track, 'scroll') === null;
+        }, key);
+        assert.equal(stopped, true);
+      }
+    });
+
+    check('viewport resizing settles old coordinates before responsive layout takes over', async (page) => {
+      await openChart(page);
+      await page.locator('[data-context="season"]').click();
+      await page.setViewportSize({ width: 320, height: 900 });
+      await settled(page);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+      assert.equal(await page.locator('[data-flow-layout]').count(), 0);
+    });
+
     check('the first reading disclosure starts with no height or padding jump', async (page) => {
       await openChart(page);
       await page.locator('.pillar-identity[data-pillar="hour"]').click();

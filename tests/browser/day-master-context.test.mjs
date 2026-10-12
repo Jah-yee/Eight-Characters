@@ -194,6 +194,7 @@ for (const profile of profiles) {
         await page.locator(`[data-context="${key}"]`).click();
         for (const width of [320, 390, 641, 768, 1440]) {
           await page.setViewportSize({ width, height: 900 });
+          await settled(page);
           assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `${key}: overflow at ${width}`);
         }
         assert.doesNotMatch(await page.locator('#chart-view').innerText(), /context_|ten_god_|qi_/);

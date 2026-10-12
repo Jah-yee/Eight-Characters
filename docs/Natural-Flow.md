@@ -43,6 +43,8 @@ settling. There are no decorative repeating animations.
 Reduced motion removes spatial, resize, colour and decorative animation across both
 application surfaces. Switching the preference on finishes active channels at their
 destinations. Printing also settles active motion before rendering static content.
+Direct viewport resizing settles active channels so offsets and fixed sizes from
+the previous responsive layout cannot constrain the new one.
 
 Animations neither defer account operations nor change chart computation. A surface
 that is closed accepts no interaction. Retired account content is cleared when its
