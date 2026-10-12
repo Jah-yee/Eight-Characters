@@ -261,7 +261,7 @@
       if (touch?.id === event.pointerId && Math.hypot(event.clientX - touch.x, event.clientY - touch.y) > 10) { cancelHover(); if (touch.shown) hide(); touch = null; }
       if (event.pointerType === 'touch') return;
       if (touchInput) {
-        if (touch !== null) return;
+        if (touch !== null || (event.movementX === 0 && event.movementY === 0)) return;
         // Layout can dispatch mouse enter/leave events below a stationary
         // compatibility pointer after a tap. Only mouse movement restores hover.
         touchInput = false;

@@ -216,6 +216,11 @@ for (const profile of profiles) {
           assert.notEqual(await phase(), before, 'a quick tap moves to the adjacent phase');
           await tipClosed(page);
         }
+        // A real mouse movement resumes hover on devices that also support touch.
+        await page.mouse.move(0, 0);
+        await page.locator('[data-luck-step="-1"]').hover(); await tipOpen(page);
+        assert.equal(await page.locator(tipSelector + ' strong').textContent(), 'Previous phase');
+        await page.mouse.move(0, 0); await tipClosed(page);
       });
 
       check('a touch hold is its finger’s alone: another pointer moving, lifting or cancelling leaves it', async (page) => {
