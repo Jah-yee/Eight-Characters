@@ -711,8 +711,9 @@
       const open = state.topic !== null;
       detail.classList.toggle('hidden', !open);
       if (open) detail.innerHTML = topicMarkup(state.topic);
+      if (open) view.classList.add('has-panel');
       window.EC_MOTION.panel(panel, open);
-      view.classList.toggle('has-panel', open);
+      if (!open) view.classList.remove('has-panel');
       if (!open) window.EC_MOTION.retire(detail);
     }, ':scope > .chart-column');
     panel.addEventListener('click', (event) => {

@@ -1085,8 +1085,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const syncPanel = () => {
     const open = panelSections.some((section) => !section.classList.contains('hidden'));
     motion.layout(chartView, () => {
+      if (open) chartView.classList.add('has-panel');
       motion.panel(chartPanel, open);
-      chartView.classList.toggle('has-panel', open);
+      if (!open) chartView.classList.remove('has-panel');
     }, ':scope > .chart-column');
     // From 1200px wide the chart column moves over as the panel opens beside it.
     followCardHint();

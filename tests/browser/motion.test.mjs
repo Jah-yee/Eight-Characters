@@ -119,10 +119,22 @@ for (const profile of profiles) {
         const closed = panel.getBoundingClientRect().height;
         document.querySelector('[data-context="season"]').click();
         await new Promise(queueMicrotask);
-        return { before, closed, reopened: panel.getBoundingClientRect().height };
+        const reopened = panel.getBoundingClientRect().height;
+        let previous = reopened;
+        const landing = await new Promise((resolve) => {
+          const sample = () => {
+            const height = panel.getBoundingClientRect().height;
+            if (panel.style.height === '') { resolve(Math.abs(height - previous)); return; }
+            previous = height;
+            requestAnimationFrame(sample);
+          };
+          requestAnimationFrame(sample);
+        });
+        return { before, closed, reopened, landing };
       });
       assert.ok(Math.abs(size.before - size.closed) < .5);
       assert.ok(Math.abs(size.closed - size.reopened) < .5);
+      assert.ok(size.landing < 2, `The drawer jumped ${size.landing}px when intrinsic sizing resumed.`);
       await settled(page);
       assert.equal(await page.locator('#chart-panel').evaluate((panel) => panel.style.height), '');
     });
