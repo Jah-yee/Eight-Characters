@@ -102,11 +102,27 @@ for (const profile of profiles) {
 
     check('changing language updates the same birth without replaying pillar entrances', async (page) => {
       await openChart(page);
-      await page.locator('#chart-language [data-lang="fi"]').click();
-      await page.waitForFunction(() => document.querySelector('#chart-language [data-lang="fi"]').getAttribute('aria-pressed') === 'true');
+      await page.locator('#chart-language [data-chart-lang="fi"]').click();
+      await page.waitForFunction(() => document.querySelector('#chart-language [data-chart-lang="fi"]').getAttribute('aria-pressed') === 'true');
       await settled(page);
       assert.equal(await page.locator('.pillar[data-flow-enter]').count(), 0);
       assert.equal(await page.locator('.pillar').evaluateAll((nodes) => nodes.every((node) => getComputedStyle(node).animationName === 'none')), true);
+    });
+
+    check('the first reading disclosure starts with no height or padding jump', async (page) => {
+      await openChart(page);
+      await page.locator('.pillar-identity[data-pillar="hour"]').click();
+      await settled(page);
+      const toggle = page.locator('#pillar-detail .canon-line-toggle[aria-expanded="false"]').first();
+      const height = await toggle.evaluate((button) => {
+        const passage = document.getElementById(button.getAttribute('aria-controls'));
+        const before = passage.getBoundingClientRect().height;
+        button.click();
+        return { before, after: passage.getBoundingClientRect().height };
+      });
+      assert.equal(height.before, 0);
+      assert.ok(height.after < .1);
+      await settled(page);
     });
   });
 }

@@ -6,6 +6,7 @@
   const preference = matchMedia('(prefers-reduced-motion: reduce)');
   const channels = new WeakMap();
   const panelStates = new WeakMap();
+  const disclosureStyles = new WeakMap();
   const moving = new Set();
   const frameListeners = new Set();
   let frame = 0;
@@ -112,26 +113,36 @@
   };
 
   const disclose = (element, open, animate = true, after = null) => {
+    if (!disclosureStyles.has(element)) disclosureStyles.set(element, { paddingBottom: element.style.paddingBottom });
+    const original = disclosureStyles.get(element);
     const from = { height: element.hidden ? 0 : element.getBoundingClientRect().height,
-      opacity: element.hidden ? 0 : Number(getComputedStyle(element).opacity) };
+      opacity: element.hidden ? 0 : Number(getComputedStyle(element).opacity),
+      padding: element.hidden ? 0 : Number.parseFloat(getComputedStyle(element).paddingBottom) };
     if (open) element.hidden = false;
+    element.style.paddingBottom = original.paddingBottom;
+    element.style.height = 'auto';
+    const natural = { height: element.getBoundingClientRect().height,
+      padding: Number.parseFloat(getComputedStyle(element).paddingBottom) };
     element.setAttribute('data-flow-disclosure', '');
     element.inert = !open;
     if (!animate) {
       cancel(element, 'disclosure');
       element.style.height = open ? 'auto' : '0px';
       element.style.opacity = open ? '1' : '0';
+      element.removeAttribute('data-flow-disclosure');
       after?.();
       return;
     }
     spring(element, 'disclosure', {
       from,
-      to: { height: open ? element.scrollHeight : 0, opacity: open ? 1 : 0 },
-      write: ({ height, opacity }) => {
+      to: { height: open ? natural.height : 0, opacity: open ? 1 : 0, padding: open ? natural.padding : 0 },
+      write: ({ height, opacity, padding }) => {
         element.style.height = `${Math.max(0, height)}px`;
+        element.style.paddingBottom = `${Math.max(0, padding)}px`;
         element.style.opacity = String(clamp(opacity));
       },
-      complete: () => { element.style.height = open ? 'auto' : '0px'; after?.(); },
+      complete: () => { element.style.height = open ? 'auto' : '0px'; element.style.paddingBottom = original.paddingBottom;
+        element.removeAttribute('data-flow-disclosure'); after?.(); },
     });
   };
   const reveal = (element, { distance = model.travel, delay = 0 } = {}) => {
@@ -156,12 +167,14 @@
       const old = before.get(identity(element));
       if (!old || !old.width || !old.height) continue;
       element.removeAttribute('data-flow-layout');
+      ['x', 'y', 'sx', 'sy'].forEach((key) => element.style.removeProperty(`--flow-layout-${key}`));
       const next = element.getBoundingClientRect();
       if (!next.width || !next.height) continue;
       const from = { x: old.left - next.left, y: old.top - next.top,
         sx: old.width / next.width, sy: old.height / next.height };
       if (Math.abs(from.x) < .5 && Math.abs(from.y) < .5
-        && Math.abs(from.sx - 1) < .001 && Math.abs(from.sy - 1) < .001) continue;
+        && Math.abs(from.sx - 1) < .001 && Math.abs(from.sy - 1) < .001
+        && !channels.get(element)?.get('layout')?.active) continue;
       element.setAttribute('data-flow-layout', '');
       spring(element, 'layout', { from, to: { x: 0, y: 0, sx: 1, sy: 1 }, rebase: true,
         write: ({ x, y, sx, sy }) => {
