@@ -24,6 +24,7 @@ fails on any.
 | `--shadow-1`, `--shadow-2`, `--shadow-sheet` | | a focused field; anything raised; the sheet over the foot of the page |
 | `--sheen` | | the light across a card's face |
 | `--pin` | the place fields' pin, drawn in `--ink-1` | the pin at the end of a place field |
+| `--chevron` | a list's chevron, drawn in `--ink-2` | the end of a list (a `select`), which draws its own so that it takes the controls' height and corners in every browser |
 | `--<element>-bg`, `--<element>-text`, `--<element>-tint` | the tint: its element at 20% on the page tone (22% for metal and water), mixed opaque with `color-mix()` | each element's cards, their ink, and its hidden-stem panels |
 
 `--ink-1` and `--ink-2` meet WCAG AA (4.5:1) on the page and on every
@@ -51,7 +52,7 @@ pickers, follow it. Paper keeps the day's colours.
 | `--ink-found`, `--ink-error` | `#93C29B`, `#E6A094` |
 | `--line-1`, `--line-2` | the ink at 14%, 34% |
 | `--surface-1`, `--surface-2`, `--surface-3` | white at 4%, 8%; `#2C2824` at 96% on the page, opaque |
-| `--pin` | the pin drawn in the dark `--ink-1` |
+| `--pin`, `--chevron` | the pin and the chevron drawn in the dark `--ink-1` and `--ink-2` |
 | `--surface-page-1`, `--surface-page-2` | the page tone at 85%, 92% |
 | `--shadow-*`, `--backdrop`, `--sheen` | black at 35–55%; white light at 8% |
 | `--metal-bg` / `--metal-text` | `#5C5851` / `#F3EFE8` |
@@ -153,6 +154,43 @@ A group of choices (a pill of them, the gender, the partner in view) is a contro
 height plus its `--space-1` padding and hairline: 46px, and 54px on a phone. The
 start page's language switch is itself a control's height, its two choices within
 it, so it stands level with the account's button beside it.
+
+## One card
+
+A stem or a branch is drawn as one card wherever it stands: the chart's cards, Today's,
+a saved chart's pillars, and the life grid's head and Luck column. It comes in four
+sizes:
+
+| Size | Where | Character | Corners | Draws |
+|---|---|---|---|---|
+| full | the chart; Today's day | `--text-6` | `--radius-5`, `--radius-2` | its lines and names |
+| small | Today's pillars at noon; the couple's day | `--text-4` | `--radius-4`, `--radius-2` | its pinyin |
+| tile | a saved chart's pillars; the life grid | `--text-3` | `--radius-4`, `--radius-2` | its pinyin |
+| tiny | Today's relationships | `--text-2` | `--radius-3`, `--radius-1` | its pinyin |
+
+- Its face is `--sheen` over its element's `--<element>-bg`, under its ink,
+  `--<element>-text`. Set aside (a luck pillar's stem in its branch phase), it takes
+  the element's `--<element>-tint`.
+- A stem rounds its top corners and meets its branch with the smaller radius; the
+  branch mirrors it. A tile in the life grid's head, beside its pillar's other part,
+  rounds every corner; on a phone, where the two stack, they meet as cards do.
+- Its words: the character (`.glyph`) in `--font-glyph` at 500; its pinyin
+  (`.card-pinyin`) in `--font-sans` 600 at `--text-1`, where nothing beside it names
+  the pillar (on the chart, its header does); and on a full card its lines (`.gua`)
+  and its names in `--font-serif` 600: a stem's element (`.element-name`, `--text-3`),
+  a branch's animal (`.animal-name`, `--text-2`, tracked capitals) over its element
+  (`.animal-element`, as a stem's). A card under 130px wide (Today's days) sets the
+  animal in the name's case: its capitals would not fit.
+
+## One label
+
+What a field, a pillar, a place or a group of things is, is set one way: `--font-serif`
+500 at `--text-1`, in `--tracking-2` capitals, in `--ink-2`, on `--leading-2`. It covers
+the start page's and the account's fields, the pillars' plain names (the chart, the life
+grid, Today's pillars at noon), the panel's places and groups of roles, a pillar's change
+sides, the readings' keys, a decade's place in its sequence, Today's run, its noon and
+its relationships' places, and Settings' lists, which wear their labels above them. A
+life-grid column too narrow for capitals (a phone's five) keeps the name's case.
 
 ## The pillars and the panel
 
