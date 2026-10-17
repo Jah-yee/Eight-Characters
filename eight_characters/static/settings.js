@@ -105,6 +105,8 @@
         // A chart can be in any number of couples (#98), each pair once.
         && new Set(value.couples.map((couple) => [...couple.charts].sort().join(' '))).size === value.couples.length
         && Number.isInteger(value.chart_limit) && value.chart_limit > 0
+        // How many couples one chart may be in on the account's plan; null for no cap.
+        && (value.couples_per_chart === null || (Number.isInteger(value.couples_per_chart) && value.couples_per_chart > 0))
         && (value.place === null || typeof value.place === 'object');
       if (!ok) throw new Error(t('settings_answer_error', { status: 200 }));
       return value;
@@ -169,7 +171,9 @@
     // why it was not made. Refused because the settings changed elsewhere, because the
     // session ended or because another account is signed in now, the settings are read
     // again and drawn, and the change is not repeated: the reader decides again.
-    const write = (method, path, body, from) => {
+    // `made`, given the settings the change was made from and the ones it left, once
+    // the API has made it: in turn, before any later change.
+    const write = (method, path, body, from, made = null) => {
       waiting += 1;
       return inTurn(async () => {
         // A sign-out while the change is on its way: its answer is the account's before,
@@ -180,10 +184,12 @@
           // over, nor from a page that could not read them.
           if (settings === null || from < 0) return t('settings_load_error');
           if (from !== basis) return replaced;
+          const was = settings;
           const value = checked(await call(method, path, { ...body, key: settings.key, updated_at: settings.updated_at }));
           if (at !== generation) return ended;
           settings = value;
           onChanged(settings);
+          made?.(was, value);
           return null;
         } catch (err) {
           if (at !== generation) return ended;
@@ -214,18 +220,22 @@
       });
     };
     // A change from this page: done, it is said briefly (`done`, or what it says of the
-    // settings the change left); refused, its reason stays here.
+    // settings it left and the ones it was made from, which changes made before it may
+    // have changed since it was asked for); refused, its reason stays here.
     const change = async (method, path, body, done) => {
       let problem;
+      let said = typeof done === 'function' ? null : done;
       try {
-        problem = await write(method, path, body, drawnBasis);
+        problem = await write(method, path, body, drawnBasis, (was, now) => {
+          if (typeof done === 'function') said = done(now, was);
+        });
       } catch (err) {
         console.error(err);
         problem = err.message || t('settings_load_error');
       }
       if (problem === null) {
         say('');
-        toast(typeof done === 'function' ? done(settings) : done, false);
+        toast(said, false);
         return true;
       }
       say(problem, true);
@@ -284,10 +294,29 @@
         <div class="settings-actions">${action('add-mine', null, t('settings_new_birth'))}</div>`;
     };
 
+    // A chart can take one more couple: any chart, as many as the account's plan allows
+    // (couples_per_chart, null for no cap).
+    const underCap = (kept, chart) => kept.couples_per_chart === null
+      || library.couplesOf(kept, chart.id).length < kept.couples_per_chart;
+    // The charts a chart can pair with now: under the cap, neither itself nor one of its
+    // partners.
+    const pairable = (kept, chart) => kept.charts.filter((other) => other.id !== chart.id
+      && underCap(kept, other) && library.coupleBetween(kept, chart.id, other.id) === null);
+    // The second list follows the first: the charts the first can pair with.
+    const drawPairSecond = () => {
+      const first = view.querySelector('#settings-pair-first');
+      const second = view.querySelector('#settings-pair-second');
+      if (!first || !second) return;
+      const chart = library.chartWith(settings, first.value);
+      const choices = chart === null ? [] : pairable(settings, chart);
+      second.innerHTML = options(choices, choices[0]?.id ?? null);
+    };
     const drawCouples = () => {
-      // Pairing a chart in a couple with another waits for #96: Pair offers charts in no
-      // couple, as before.
-      const single = settings.charts.filter((chart) => library.couplesOf(settings, chart.id).length === 0);
+      // Pair offers each chart that can take one more couple and is not yet paired with
+      // every chart it could be; a new birth can be the partner of any chart under the
+      // cap, even one paired with every other.
+      const firsts = settings.charts.filter((chart) => underCap(settings, chart) && pairable(settings, chart).length > 0);
+      const open = settings.charts.filter((chart) => underCap(settings, chart));
       const couples = settings.couples.map((couple) => {
         const [first, second] = couple.charts.map((id) => library.chartWith(settings, id));
         return `<li class="couple-card" data-couple="${esc(couple.id)}">
@@ -301,25 +330,33 @@
           </li>`;
       }).join('');
       const pending = settings.pending_partner === null ? null : library.chartWith(settings, settings.pending_partner);
-      // The partner's side: my chart when it is free, else the first chart that is.
-      const side = single.find((chart) => chart.id === settings.my_chart) ?? single[0] ?? null;
+      // Each list starts at my chart, else at its first chart.
+      const first = firsts.find((chart) => chart.id === settings.my_chart) ?? firsts[0] ?? null;
+      const partnerOf = open.find((chart) => chart.id === settings.my_chart) ?? open[0] ?? null;
+      // Under a plan's cap, a chart in as many couples as it allows is not offered: the
+      // page says why.
+      const capped = settings.couples_per_chart !== null && open.length < settings.charts.length;
+      const cap = () => (settings.couples_per_chart === 1 ? t('settings_couple_cap_one')
+        : t('settings_couple_cap', { count: settings.couples_per_chart }));
       couplesBody.innerHTML = `
         ${couples === '' ? `<p class="settings-note">${esc(t('settings_couples_none'))}</p>` : `<ul class="couple-cards">${couples}</ul>`}
         ${pending === null ? '' : `<p class="settings-note">${esc(t('settings_pending', { name: chartName(pending) }))}</p>`}
-        ${single.length < 2 ? '' : `
+        ${capped ? `<p class="settings-note">${esc(cap())}</p>` : ''}
+        ${first !== null ? `
           <div class="settings-choose settings-pair">
             <label for="settings-pair-first">${esc(t('settings_pair_first'))}</label>
-            <select id="settings-pair-first">${options(single, side?.id)}</select>
+            <select id="settings-pair-first">${options(firsts, first.id)}</select>
             <label for="settings-pair-second">${esc(t('settings_pair_second'))}</label>
-            <select id="settings-pair-second">${options(single, single.find((chart) => chart.id !== side?.id)?.id)}</select>
+            <select id="settings-pair-second"></select>
             ${action('pair', null, t('settings_pair'))}
-          </div>`}
-        ${side === null ? '' : `
+          </div>` : settings.charts.length < 2 ? '' : `<p class="settings-note">${esc(t('settings_pair_none'))}</p>`}
+        ${partnerOf === null ? '' : `
           <div class="settings-choose">
             <label for="settings-partner-of">${esc(t('settings_partner_of'))}</label>
-            <select id="settings-partner-of">${options(single, side.id)}</select>
+            <select id="settings-partner-of">${options(open, partnerOf.id)}</select>
             ${action('add-partner', null, t('settings_partner_new_birth'))}
           </div>`}`;
+      drawPairSecond();
     };
 
     // A rename is asked for in place, on the chart's card.
@@ -397,10 +434,18 @@
           const chosen = chosenIn('#settings-mine-choice');
           if (chosen === null) break;
           // A partner kept from before charts pairs with the chart marked: said, by name.
-          const before = drawn;
-          const marked = (now) => {
-            const partner = library.pairedSince(before, now, chosen);
-            return partner === null ? t('settings_mine_marked') : t('settings_mine_marked_paired', { name: chartName(partner) });
+          // When the chart is at its plan's cap the partner does not, waits no longer, and
+          // the page says why. Both are read from the settings the mark was made from,
+          // not those drawn when it was asked for: changes before it may have paired the
+          // partner already.
+          const marked = (now, was) => {
+            const partner = library.pairedSince(was, now, chosen);
+            if (partner !== null) return t('settings_mine_marked_paired', { name: chartName(partner) });
+            const waiting = was.pending_partner === null || was.pending_partner === chosen ? null : library.chartWith(now, was.pending_partner);
+            const atCap = now.couples_per_chart !== null && library.couplesOf(now, chosen).length >= now.couples_per_chart;
+            return waiting !== null && atCap && now.pending_partner === null
+              ? t('settings_mine_marked_unpaired', { name: chartName(waiting) })
+              : t('settings_mine_marked');
           };
           await once(`mark ${chosen}`, () => change('PUT', '/api/account/my-chart', { chart: chosen }, marked));
           break;
@@ -418,6 +463,10 @@
           if (first === null || second === null) break;
           if (first === second) {
             say(t('settings_pair_same'), true);
+            break;
+          }
+          if (library.coupleBetween(drawn, first, second) !== null) {
+            say(t('settings_pair_twice'), true);
             break;
           }
           // A couple is the same whichever chart is chosen first.
@@ -468,6 +517,9 @@
         say(err.message || t('settings_load_error'), true);
       });
     }));
+    couplesBody.addEventListener('change', (event) => {
+      if (event.target.id === 'settings-pair-first') drawPairSecond();
+    });
     chartsBody.addEventListener('submit', async (event) => {
       event.preventDefault();
       const formNode = event.target.closest('.settings-rename');

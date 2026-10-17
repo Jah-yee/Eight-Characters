@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.55.0
+
+Couples, step 2b (#96): Settings' Pair joins any two charts that can take another
+couple, so a chart can be in any number of couples from the page too.
+
+### Changed
+- **Pair** offers each chart that can take another couple and is not yet paired with
+  every chart it could be, starting at yours; its second list follows the first,
+  never offering the chart itself or one of its partners. With no pair left to form,
+  the page says so. A pair formed already is refused before the API is asked.
+- **Add the partner as a new birth** is offered for any chart that can take another
+  couple, even one paired with every other.
+- **Under a plan's cap** (none caps couples for now), a chart at it is in neither list,
+  and the page says why. A settings answer without a valid `couples_per_chart` is
+  refused, never drawn.
+- **Marking your chart** says when a partner kept from before charts did not pair with
+  it, because it is at its plan's cap, and that the partner waits no longer. What a
+  change did is read from the settings it was made from, not those drawn when it was
+  asked for, so a mark made while another change is on its way says what it did.
+
+### Tests
+- `settings.test.mjs`: the second list following the first, focus kept; pairing a
+  chart in a couple; no pair left; a new birth as the partner of a chart paired with
+  every other; a capped answer's lists and note; the waiting partner past the cap, and
+  two marks in turn on an unrestricted plan; ten
+  partners named as three and seven more, inside the page; a pair formed already
+  refused without asking; a missing or malformed cap refused. `tests/browser/README.md`
+  describes the Settings suite.
+
 ## 0.54.0
 
 Couples, step 2a (#102): the store and the API pair a chart that is in a couple
