@@ -19,10 +19,12 @@ from typing_extensions import TypedDict
 
 from eight_characters import __version__
 from eight_characters.accounts.records import (
+    Birth,
     ChosenSchools,
     RecordError,
     Schools,
 )
+from eight_characters.accounts.records import Place as AccountPlace
 from eight_characters.accounts.web import (
     AccountsDependency,
     BirthBody,
@@ -107,7 +109,14 @@ from eight_characters.time_convert import (
     Gender,
     NonexistentTimeError,
 )
-from eight_characters.today import TodayAnswer, TodayInputError, Whose, build_today
+from eight_characters.today import (
+    DaysAnswer,
+    TodayAnswer,
+    TodayInputError,
+    Whose,
+    build_days,
+    build_today,
+)
 from eight_characters.vsop87d import earth_series
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -315,18 +324,28 @@ class TodayCharts(BaseModel):
     partner: BirthBody | None = None
 
 
-class TodayRequest(BaseModel):
+class TodayBasis(BaseModel):
     # The chart the page is on, as `self`, and what the account keeps for Today
     # (GET /api/account/settings): a partner's chart, where the person is, and the
-    # schools chosen.
+    # schools chosen; and whose chart is read.
     model_config = ConfigDict(extra='forbid', strict=True)
 
-    date: str
-    lang: Literal['fi', 'en']
     place: PlaceRequest
     charts: TodayCharts
     chart: Whose = 'self'
     schools: SchoolsChoice = Field(default_factory=SchoolsChoice)
+
+
+class TodayRequest(TodayBasis):
+    # A day, and the language its readings are in.
+    date: str
+    lang: Literal['fi', 'en']
+
+
+class DaysRequest(TodayBasis):
+    # The date the days run from: after it, or before it, one of the two.
+    after: str | None = None
+    before: str | None = None
 
 
 class HiddenStemsRequest(BaseModel):
@@ -1388,10 +1407,12 @@ async def hidden_stems(
 _DAY = re.compile(r'[0-9]{4}-[0-9]{2}-[0-9]{2}')
 
 
-def _day(text: str) -> date:
+def _day(text: str, field: str = 'date') -> date:
+    """The date a request names in `field`; 400 naming that field, or the date, if it
+    is not one."""
     if _DAY.fullmatch(text) is None:
         raise HTTPException(
-            status_code=400, detail='date must be in YYYY-MM-DD format.'
+            status_code=400, detail=f'{field} must be in YYYY-MM-DD format.'
         )
     try:
         return date.fromisoformat(text)
@@ -1408,11 +1429,12 @@ def schools() -> Catalog:
     return school_catalog()
 
 
-@app.post('/api/today', dependencies=ACCOUNT_REQUIRED)
-def today_from_request(payload: TodayRequest, response: Response) -> TodayAnswer:
-    """Everything Today shows for a date: for the chart sent as `self`, with a
-    partner's beside it, at a place, by the schools chosen (docs/Today.md)."""
-    day = _day(payload.date)
+def _today_basis(
+    payload: TodayBasis,
+) -> tuple[AccountPlace, Birth, Birth | None, Schools]:
+    """What a day, or days, are read for: the place, the chart read and the other one
+    sent (None for no partner), and the schools. 400 for any that cannot be read, and
+    for the partner's chart asked for without one."""
     try:
         place = place_of(payload.place)
         own = birth_of(payload.charts.own)
@@ -1426,17 +1448,46 @@ def today_from_request(payload: TodayRequest, response: Response) -> TodayAnswer
         )
     except (RecordError, FirstChartInputError, TodayInputError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    if payload.chart == 'partner' and partner is None:
+    if payload.chart == 'self':
+        return place, own, partner, chosen.effective()
+    if partner is None:
         raise HTTPException(
             status_code=400, detail="chart is partner, but no partner's chart is sent."
         )
-    subject, other = (own, partner) if payload.chart == 'self' else (partner, own)
-    if subject is None:
-        raise AssertionError('The chart asked for was checked above.')
-    schools_used: Schools = chosen.effective()
+    return place, partner, own, chosen.effective()
+
+
+@app.post('/api/today', dependencies=ACCOUNT_REQUIRED)
+def today_from_request(payload: TodayRequest, response: Response) -> TodayAnswer:
+    """Everything Today shows for a date: for the chart sent as `self`, with a
+    partner's beside it, at a place, by the schools chosen (docs/Today.md)."""
+    day = _day(payload.date)
+    place, subject, other, schools_used = _today_basis(payload)
     try:
         answer = build_today(
             day, place, subject, other, schools_used, payload.lang, payload.chart
+        )
+    except TodayInputError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    response.headers['Cache-Control'] = 'private, no-cache'
+    return answer
+
+
+@app.post('/api/today/days', dependencies=ACCOUNT_REQUIRED)
+def today_days_from_request(payload: DaysRequest, response: Response) -> DaysAnswer:
+    """The days of three weeks after a date, or before it, each as a day's run has it,
+    for the chart read at a place by the schools chosen: for Today's carousel to go
+    past a day's own run (docs/api.md)."""
+    if (payload.after is None) == (payload.before is None):
+        raise HTTPException(
+            status_code=400, detail='Send after or before: the date the days run from.'
+        )
+    after = None if payload.after is None else _day(payload.after, 'after')
+    before = None if payload.before is None else _day(payload.before, 'before')
+    place, subject, _other, schools_used = _today_basis(payload)
+    try:
+        answer = build_days(
+            subject, place, schools_used, payload.chart, after=after, before=before
         )
     except TodayInputError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
