@@ -31,6 +31,14 @@ SPACING_PROPERTIES = re.compile(
     r'^(margin|padding)(-(top|right|bottom|left|block|inline)(-(start|end))?)?$|^(row-|column-)?gap$'
 )
 RAW_LENGTH = re.compile(r'(?<![\w.-])-?\d*\.?\d+(px|em|rem)\b')
+# A size from the type scale; or one held against a scale, as Today's days recede by
+# theirs while their words keep the smallest size for content (the token times the
+# inverse of the scale, `--held`), at least the token itself.
+FONT_SIZE = re.compile(
+    r'var\(--text-\d\)'
+    r'|calc\(var\(--text-\d\) \* var\(--held\)\)'
+    r'|max\(var\(--text-\d\), calc\(var\(--text-\d\) \* var\(--held\)\)\)'
+)
 
 
 def _css_declarations(css: str) -> list[tuple[str, str, str]]:
@@ -90,7 +98,6 @@ class TestApiIndexRoute(unittest.TestCase):
         response = self.client.get('/')
         for element_id in (
             'display-switch',
-            'view-switch',
             'chart-language',
             'copy-link-btn',
             'copy-text-btn',
@@ -102,8 +109,12 @@ class TestApiIndexRoute(unittest.TestCase):
             'compare-charts',
         ):
             self.assertIn(f'id="{element_id}"', response.text)
-        # The view is chosen on a chart, not before one.
+        # No control leads to the Evolution explorer, before a chart or on one: it opens
+        # at its address only.
         self.assertNotIn('data-mode=', response.text)
+        self.assertNotIn('id="view-switch"', response.text)
+        self.assertNotIn('data-view=', response.text)
+        self.assertNotIn('/explorer/?', response.text)
 
     def test_day_master_context_has_accessible_controls_and_versioned_module(
         self,
@@ -295,7 +306,7 @@ class TestApiIndexRoute(unittest.TestCase):
             if 'rgba(42,37,32' in re.sub(r'\s+', '', value):
                 problems.append(f'raw ink: {where}')
             tokens_removed = re.sub(r'var\(--[a-z0-9-]+\)', '', value)
-            if name == 'font-size' and not re.fullmatch(r'var\(--text-\d\)', value):
+            if name == 'font-size' and not re.fullmatch(FONT_SIZE, value):
                 problems.append(f'font size off the scale: {where}')
             elif name == 'letter-spacing' and not re.fullmatch(
                 r'var\(--tracking-\d\)|0|normal', value
