@@ -179,6 +179,7 @@ class TestApiIndexRoute(unittest.TestCase):
             'spotlight.js',
             'compare.js',
             'account.js',
+            'place-search.js',
             'app.js',
         ):
             self.assertIn(f'/static/{asset}?v={__version__}', response.text)

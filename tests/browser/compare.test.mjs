@@ -135,7 +135,7 @@ for (const profile of profiles) {
         ['display-switch', 'copy-text-btn']);
       assert.deepEqual(await page.locator('.compare-frame').evaluateAll((frames) => frames.map((frame) => frame.title)), [
         'Chart 1: February 4, 1988 · 16:30 · Chengdu', 'Chart 2: May 9, 1990 · 12:00 · Chengdu']);
-      assert.equal(await page.title(), 'Comparison: February 4, 1988 · 16:30 · Chengdu and May 9, 1990 · 12:00 · Chengdu — BaZi');
+      assert.equal(await page.title(), 'Comparison: February 4, 1988 · 16:30 · Chengdu and May 9, 1990 · 12:00 · Chengdu — Eight Chord');
       const pair = pairIn(page.url());
       assert.deepEqual([pair.a.get('date'), pair.b.get('date'), pair.b.get('time')], ['1988-02-04', SECOND.date, SECOND.time]);
     });
@@ -372,10 +372,14 @@ for (const profile of profiles) {
       // Said where it shows: over the comparison, which hides the chart view.
       assert.equal(await page.locator('.toast').isVisible(), true);
       assert.deepEqual(await page.evaluate(() => window.__copied), [page.url()]);
-      for (const [hash, part] of [['#compare?b=date%3D1990-05-09', 'a'], ['#compare?a=date%3D1990-13-40', 'date'], ['#compare?a=x&c=1', 'c']]) {
+      for (const [hash, why] of [
+        ['#compare?b=date%3D1990-05-09', 'Chart 1 is missing'],
+        ['#compare?a=date%3D1990-13-40', 'the birth date is not valid'],
+        ['#compare?a=x&c=1', 'the app does not know its part “c”'],
+      ]) {
         await page.goto(new URL(`/${hash}`, page.url()).href);
         await page.locator('#form-error').waitFor({ state: 'visible' });
-        assert.ok((await page.locator('#form-error').textContent()).includes(`“${part}”`), part);
+        assert.equal(await page.locator('#form-error').textContent(), `This link does not open a chart: ${why}.`, hash);
         assert.equal(await page.locator('#compare-view').isVisible(), false);
         assert.equal(new URL(page.url()).hash, '');
       }
