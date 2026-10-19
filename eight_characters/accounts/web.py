@@ -68,7 +68,9 @@ from eight_characters.accounts.signin import (
     TooManyRequests,
 )
 from eight_characters.accounts.store import (
+    SCHEMA_VERSION,
     AccountStore,
+    BillingReadOnly,
     ChartLimit,
     CoupleLimit,
     DuplicateChart,
@@ -176,6 +178,12 @@ def _positive(env: Mapping[str, str], name: str, errors: list[str]) -> int:
 
 def load_config(env: Mapping[str, str]) -> AccountsConfig:
     """The account settings in `env`, or ConfigError naming everything wrong."""
+    if env.get('EC_BILLING_MODE', 'disabled') != 'disabled' or any(
+        name.startswith('EC_STRIPE_') for name in env
+    ):
+        raise ConfigError(
+            'Billing service configuration requires the billing writer; this release is a recovery reader.'
+        )
     required = (
         'EC_APP_ORIGIN',
         'EC_DATABASE_PATH',
@@ -288,6 +296,11 @@ class Accounts:
     ) -> 'Accounts':
         now = clock or (lambda: datetime.now(UTC))
         store = AccountStore.open(config.database, clock=now)
+        if store.schema_version() > SCHEMA_VERSION:
+            raise ConfigError(
+                'This release can recover schema-5 billing records but cannot serve '
+                'financially managed accounts. Use the billing writer for account service.'
+            )
         if mailer is None:
             if config.smtp is not None:
                 mailer = SmtpTransport(*config.smtp)
@@ -313,7 +326,12 @@ def accounts_from_environment() -> Accounts:
 
 def get_accounts() -> Accounts:
     """The account services, from the environment. Tests replace this dependency."""
-    return accounts_from_environment()
+    accounts = accounts_from_environment()
+    # Another process may migrate the shared database after this service starts.
+    # Even a session that needs no renewal must not serve legacy plan limits.
+    if accounts.store.schema_version() > SCHEMA_VERSION:
+        raise BillingReadOnly('This reader cannot serve financially managed accounts.')
+    return accounts
 
 
 AccountsDependency = Annotated[Accounts, Depends(get_accounts)]

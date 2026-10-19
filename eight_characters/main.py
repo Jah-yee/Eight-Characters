@@ -25,6 +25,7 @@ from eight_characters.accounts.records import (
     Schools,
 )
 from eight_characters.accounts.records import Place as AccountPlace
+from eight_characters.accounts.store import BillingReadOnly
 from eight_characters.accounts.web import (
     AccountsDependency,
     BirthBody,
@@ -149,6 +150,20 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
 
 app = FastAPI(title='Eight Characters', lifespan=lifespan)
 app.include_router(account_router)
+
+
+@app.exception_handler(BillingReadOnly)
+async def billing_reader_write_refused(
+    _request: Request, _exc: BillingReadOnly
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=503,
+        content={
+            'detail': 'Account changes are temporarily unavailable during billing recovery.'
+        },
+    )
+
+
 # Charts need an account, but for the first chart (/api/first_chart). The start page,
 # place search and the explorer's sample and settings stay open.
 ACCOUNT_REQUIRED = [Depends(require_account)]
