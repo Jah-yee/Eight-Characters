@@ -9,6 +9,7 @@ place only when complete.
 
 import hmac
 import os
+import secrets
 import sqlite3
 from collections.abc import Callable, Generator, Mapping, Sequence
 from contextlib import contextmanager
@@ -17,8 +18,17 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Final, cast
 
+from eight_characters.accounts.billing_access import (
+    Access,
+    BillingConfig,
+    BillingHold,
+    check_scope,
+    effective_access,
+)
 from eight_characters.accounts.billing_records import (
+    AccountBillingRecord,
     BillingDocument,
+    ScopeRecord,
     billing_path,
     validate_billing_graph,
 )
@@ -65,7 +75,7 @@ from eight_characters.school_presets import (
 
 # Numbered migrations: the database's `user_version` is how many have run. Each runs
 # in its own transaction, so a database is always at one version or the next.
-MIGRATIONS: Final[tuple[tuple[str, ...], ...]] = (
+LEGACY_MIGRATIONS: Final[tuple[tuple[str, ...], ...]] = (
     (
         """
         CREATE TABLE users (
@@ -154,6 +164,7 @@ MIGRATIONS: Final[tuple[tuple[str, ...], ...]] = (
         """,
     ),
 )
+MIGRATIONS: Final[tuple[tuple[str, ...], ...]] = (*LEGACY_MIGRATIONS, BILLING_SCHEMA_5)
 SCHEMA_VERSION: Final = len(MIGRATIONS)
 # SQLite's own field for telling an application's files from others ('E8CH').
 APPLICATION_ID: Final = 0x45384348
@@ -332,6 +343,14 @@ class BackupSnapshot:
     sequence: int | None = None
 
 
+@dataclass(frozen=True)
+class _BillingBasis:
+    epoch: str
+    owner_revision: int | None
+    clock_id: str | None
+    frozen_time: int | None
+
+
 def _utc_now() -> datetime:
     return datetime.now(UTC)
 
@@ -342,7 +361,7 @@ def _uri(path: Path, mode: str) -> str:
 
 
 @contextmanager
-def _connection(
+def account_connection(
     path: Path, mode: str = 'rw'
 ) -> Generator[sqlite3.Connection, None, None]:
     connection = sqlite3.connect(
@@ -384,11 +403,17 @@ def _migrate(connection: sqlite3.Connection) -> None:
         try:
             version = _user_version(connection)
             if version > SCHEMA_VERSION:
-                _check_version(connection)
+                check_database_version(connection)
             current = version >= SCHEMA_VERSION
             if not current:
                 for statement in MIGRATIONS[version]:
                     connection.execute(statement)
+                if version + 1 == BILLING_SCHEMA_VERSION:
+                    require_billing_layout(connection, LEGACY_MIGRATIONS)
+                    connection.execute(
+                        "INSERT INTO billing_runtime(id,epoch,ready,reason,checked_at) VALUES(1,?,0,'unverified',NULL)",
+                        (secrets.token_hex(32),),
+                    )
                 connection.execute(f'PRAGMA user_version = {version + 1}')
         except BaseException:
             connection.execute('ROLLBACK')
@@ -398,13 +423,14 @@ def _migrate(connection: sqlite3.Connection) -> None:
             return
 
 
-def _check_version(connection: sqlite3.Connection) -> int:
+def check_database_version(connection: sqlite3.Connection) -> int:
     version = _user_version(connection)
     if version > SCHEMA_VERSION:
         if version != BILLING_SCHEMA_VERSION:
             raise StoreError(f'The database has unknown schema {version}.')
+    if version == BILLING_SCHEMA_VERSION:
         try:
-            require_billing_layout(connection, MIGRATIONS)
+            require_billing_layout(connection, LEGACY_MIGRATIONS)
         except RecordError as exc:
             raise StoreError(str(exc)) from exc
     return version
@@ -421,7 +447,7 @@ def _fsync_directory(directory: Path) -> None:
 def _prepare_journal(path: Path) -> None:
     # Construction cursors, including TEMP-schema statements, must be finalized
     # before checkpointing. Reopen the still-private file after that connection closes.
-    with _connection(path) as connection:
+    with account_connection(path) as connection:
         cursor = connection.execute('PRAGMA journal_mode = WAL')
         modes = cursor.fetchall()
         cursor.close()
@@ -458,7 +484,7 @@ def _user_from_row(row: tuple[Any, ...]) -> User:
     )
 
 
-def _select_user(connection: sqlite3.Connection, where: str, value: str) -> User | None:
+def user_in(connection: sqlite3.Connection, where: str, value: str) -> User | None:
     row = connection.execute(
         f'SELECT {_USER_COLUMNS} FROM users WHERE {where} = ?', (value,)
     ).fetchone()
@@ -490,7 +516,7 @@ def _put_settings(
     )
 
 
-def _log_change(
+def log_record_change(
     connection: sqlite3.Connection, kind: RecordKind, record_id: str, path: str
 ) -> None:
     connection.execute(
@@ -533,11 +559,16 @@ def _texts(row: tuple[Any, ...]) -> tuple[str, ...]:
     return tuple(str(value) for value in row)
 
 
-def _billing_records(connection: sqlite3.Connection) -> tuple[BillingDocument, ...]:
-    users = [
+def users_in(connection: sqlite3.Connection) -> list[User]:
+    """Validated personal records in the caller's existing transaction."""
+    return [
         _user_from_row(row)
         for row in connection.execute(f'SELECT {_USER_COLUMNS} FROM users')
     ]
+
+
+def billing_records_in(connection: sqlite3.Connection) -> tuple[BillingDocument, ...]:
+    users = users_in(connection)
     try:
         return read_billing(connection, users)
     except RecordError as exc:
@@ -572,11 +603,15 @@ class AccountStore:
         *,
         clock: Callable[[], datetime] = _utc_now,
         limits: Mapping[Plan, PlanLimits] = LIMITS,
+        billing_config: BillingConfig | None = None,
+        billing_clock: Callable[[str], int] | None = None,
     ) -> None:
         self.path = path
         self._clock = clock
         # What each plan lets an account keep (plans.py).
         self._limits = check_limits(limits)
+        self._billing_config = billing_config
+        self._billing_clock = billing_clock
 
     @classmethod
     def open(
@@ -585,6 +620,8 @@ class AccountStore:
         *,
         clock: Callable[[], datetime] = _utc_now,
         limits: Mapping[Plan, PlanLimits] = LIMITS,
+        billing_config: BillingConfig | None = None,
+        billing_clock: Callable[[str], int] | None = None,
     ) -> 'AccountStore':
         """The database at `path`, brought to this app's schema.
 
@@ -594,13 +631,23 @@ class AccountStore:
         check_limits(limits)
         if not path.is_file():
             raise StoreError(f'No account database at {path}.')
-        with _connection(path) as connection:
+        with account_connection(path) as connection:
             version = _user_version(connection)
             if version == 0 or _application_id(connection) != APPLICATION_ID:
                 raise StoreError(f'{path} is not an account database.')
-            _check_version(connection)
+            check_database_version(connection)
             _migrate(connection)
-        return cls(path, clock=clock, limits=limits)
+        opened = cls(
+            path,
+            clock=clock,
+            limits=limits,
+            billing_config=billing_config,
+            billing_clock=billing_clock,
+        )
+        if billing_config is not None:
+            with opened.read_transaction() as connection:
+                opened._check_billing_context(connection)
+        return opened
 
     @classmethod
     def create(
@@ -676,12 +723,15 @@ class AccountStore:
             ) from exc
         os.close(descriptor)
         try:
-            with _connection(partial) as connection:
+            with account_connection(partial) as connection:
                 connection.execute(f'PRAGMA application_id = {APPLICATION_ID}')
                 _migrate(connection)
                 connection.execute('BEGIN IMMEDIATE')
                 try:
-                    if billing is not None:
+                    if (
+                        billing is not None
+                        and _user_version(connection) < BILLING_SCHEMA_VERSION
+                    ):
                         for statement in BILLING_SCHEMA_5:
                             connection.execute(statement)
                         connection.execute(
@@ -696,6 +746,7 @@ class AccountStore:
                         (head, backup_seq),
                     )
                     if billing is not None:
+                        connection.execute('DELETE FROM billing_runtime')
                         restore_billing(connection, billing)
                         connection.execute(
                             "DELETE FROM sqlite_sequence WHERE name = 'changes'"
@@ -704,7 +755,7 @@ class AccountStore:
                             "INSERT INTO sqlite_sequence (name,seq) VALUES ('changes',?)",
                             (sequence,),
                         )
-                        require_billing_layout(connection, MIGRATIONS)
+                        require_billing_layout(connection, LEGACY_MIGRATIONS)
                         read_billing(connection, [user for user, _ in accounts])
                 except BaseException:
                     connection.execute('ROLLBACK')
@@ -724,32 +775,156 @@ class AccountStore:
         return cls(path, clock=clock, limits=limits)
 
     def schema_version(self) -> int:
-        with self._read() as connection:
+        with self.read_transaction() as connection:
             return _user_version(connection)
 
     def billing_records(self) -> tuple[BillingDocument, ...]:
-        with self._read() as connection:
+        with self.read_transaction() as connection:
             if _user_version(connection) < BILLING_SCHEMA_VERSION:
                 return ()
-            return _billing_records(connection)
+            return billing_records_in(connection)
+
+    def financially_managed(self) -> bool:
+        with self.read_transaction() as connection:
+            return self._financially_managed_in(connection)
+
+    @staticmethod
+    def _financially_managed_in(connection: sqlite3.Connection) -> bool:
+        if _user_version(connection) < BILLING_SCHEMA_VERSION:
+            return False
+        return any(
+            connection.execute(f'SELECT 1 FROM {table} LIMIT 1').fetchone() is not None
+            for table in (
+                'billing_records',
+                'billing_resources',
+                'billing_jobs',
+                'billing_leases',
+            )
+        )
 
     def limits(self, plan: Plan) -> PlanLimits:
         """What the plan lets an account keep (plans.py)."""
         return self._limits[plan]
 
+    def _check_billing_context(self, connection: sqlite3.Connection) -> None:
+        if self._billing_config is None:
+            return
+        if (
+            connection.execute(
+                "SELECT 1 FROM users WHERE plan != 'free' LIMIT 1"
+            ).fetchone()
+            is not None
+        ):
+            raise BillingHold('legacy_identity_ambiguous')
+        records = billing_records_in(connection)
+        scope = next(
+            (record for record in records if isinstance(record, ScopeRecord)), None
+        )
+        if scope is not None:
+            check_scope(self._billing_config, scope)
+
+    def _billing_state(
+        self, connection: sqlite3.Connection, user_id: str
+    ) -> tuple[ScopeRecord, AccountBillingRecord | None, str, bool]:
+        config = self._billing_config
+        if config is None:
+            raise BillingReadOnly('The financial context is not configured.')
+        self._check_billing_context(connection)
+        records = billing_records_in(connection)
+        scope = next(
+            (record for record in records if isinstance(record, ScopeRecord)), None
+        )
+        if scope is None:
+            raise BillingHold('unverified')
+        check_scope(config, scope)
+        owner = next(
+            (
+                record
+                for record in records
+                if isinstance(record, AccountBillingRecord) and record.id == user_id
+            ),
+            None,
+        )
+        runtime = connection.execute(
+            'SELECT epoch,ready FROM billing_runtime WHERE id=1'
+        ).fetchone()
+        if runtime is None:
+            raise BillingHold('unverified')
+        return scope, owner, runtime[0], runtime[1] == 1
+
+    def _billing_basis(self, user_id: str) -> _BillingBasis | None:
+        if self._billing_config is None:
+            return None
+        with self.read_transaction() as connection:
+            _, owner, epoch, ready = self._billing_state(connection, user_id)
+            if not ready:
+                raise BillingHold('unverified')
+            clock_id = None if owner is None else owner.test_clock_id
+            revision = None if owner is None else owner.revision
+        frozen = None
+        if clock_id is not None:
+            if self._billing_clock is None:
+                raise BillingHold('clock_unavailable')
+            # The only provider call in this path occurs outside every SQL lock.
+            frozen = self._billing_clock(clock_id)
+            if type(frozen) is not int or frozen < 0:
+                raise BillingHold('clock_unavailable')
+        return _BillingBasis(epoch, revision, clock_id, frozen)
+
+    def _capacity_in(
+        self, connection: sqlite3.Connection, user: User, basis: _BillingBasis | None
+    ) -> tuple[Access | None, PlanLimits]:
+        if self._billing_config is None:
+            if self._financially_managed_in(connection):
+                raise BillingReadOnly('The financial context is not configured.')
+            return None, self._limits[user.plan]
+        scope, owner, epoch, ready = self._billing_state(connection, user.id)
+        revision = None if owner is None else owner.revision
+        clock_id = None if owner is None else owner.test_clock_id
+        if basis is None or (basis.epoch, basis.owner_revision, basis.clock_id) != (
+            epoch,
+            revision,
+            clock_id,
+        ):
+            raise BillingHold('uncertain_operation')
+        now = int(self._clock().timestamp()) if clock_id is None else basis.frozen_time
+        if now is None:
+            raise BillingHold('clock_unavailable')
+        access = effective_access(scope, owner, now=now, ready=ready)
+        return access, PlanLimits(
+            self._limits[user.plan].couples_per_chart, access.chart_limit
+        )
+
+    def capacity(self, user_id: str) -> tuple[Access | None, PlanLimits]:
+        """Display uses the same predicate and a newly observed native clock."""
+        basis = self._billing_basis(user_id)
+        with self.read_transaction() as connection:
+            user = user_in(connection, 'id', user_id)
+            if user is None:
+                raise UnknownUser('No account has that id.')
+            return self._capacity_in(connection, user, basis)
+
     @contextmanager
     def _write(
         self, *, backup_progress: bool = False
     ) -> Generator[sqlite3.Connection, None, None]:
-        with _connection(self.path) as connection:
+        with account_connection(self.path) as connection:
             connection.execute('BEGIN IMMEDIATE')
             try:
-                version = _check_version(connection)
-                if version > SCHEMA_VERSION and not backup_progress:
+                version = check_database_version(connection)
+                if (
+                    version > SCHEMA_VERSION
+                    or (
+                        self._financially_managed_in(connection)
+                        and self._billing_config is None
+                    )
+                ) and not backup_progress:
                     raise BillingReadOnly(
                         'This release can read, export and back up billing records; '
                         'business changes require the billing writer.'
                     )
+                if self._billing_config is not None and not backup_progress:
+                    self._check_billing_context(connection)
                 yield connection
             except BaseException:
                 connection.execute('ROLLBACK')
@@ -757,12 +932,12 @@ class AccountStore:
             connection.execute('COMMIT')
 
     @contextmanager
-    def _read(self) -> Generator[sqlite3.Connection, None, None]:
+    def read_transaction(self) -> Generator[sqlite3.Connection, None, None]:
         # One transaction, so every query sees the same moment.
-        with _connection(self.path) as connection:
+        with account_connection(self.path) as connection:
             connection.execute('BEGIN')
             try:
-                _check_version(connection)
+                check_database_version(connection)
                 yield connection
             finally:
                 connection.execute('ROLLBACK')
@@ -786,25 +961,25 @@ class AccountStore:
             updated_at=now,
         )
         with self._write() as connection:
-            if _select_user(connection, 'email', user.email) is not None:
+            if user_in(connection, 'email', user.email) is not None:
                 raise EmailTaken('An account with that email address exists.')
             _insert_user(connection, user)
-            _log_change(connection, 'user', user.id, user_path(user.id))
+            log_record_change(connection, 'user', user.id, user_path(user.id))
         return user
 
     def user_by_email(self, email: str) -> User | None:
-        with self._read() as connection:
-            return _select_user(connection, 'email', normalize_email(email))
+        with self.read_transaction() as connection:
+            return user_in(connection, 'email', normalize_email(email))
 
     def user_by_id(self, user_id: str) -> User | None:
         if not is_id(user_id):
             return None
-        with self._read() as connection:
-            return _select_user(connection, 'id', user_id)
+        with self.read_transaction() as connection:
+            return user_in(connection, 'id', user_id)
 
     def users(self) -> list[User]:
         """Every account, in id order."""
-        with self._read() as connection:
+        with self.read_transaction() as connection:
             rows = connection.execute(
                 f'SELECT {_USER_COLUMNS} FROM users ORDER BY id'
             ).fetchall()
@@ -827,8 +1002,10 @@ class AccountStore:
         language: Language | None = None,
         plan: Plan | None = None,
     ) -> User:
+        if self._billing_config is not None and plan is not None and plan != 'free':
+            raise BillingHold('legacy_identity_ambiguous')
         with self._write() as connection:
-            current = _select_user(connection, 'id', user_id)
+            current = user_in(connection, 'id', user_id)
             if current is None:
                 raise UnknownUser('No account has that id.')
             changed = replace(
@@ -849,7 +1026,7 @@ class AccountStore:
                 'UPDATE users SET language = ?, plan = ?, updated_at = ? WHERE id = ?',
                 (changed.language, changed.plan, changed.updated_at, changed.id),
             )
-            _log_change(connection, 'user', changed.id, user_path(changed.id))
+            log_record_change(connection, 'user', changed.id, user_path(changed.id))
         return changed
 
     def delete_user(self, user_id: str) -> None:
@@ -859,7 +1036,13 @@ class AccountStore:
         address: deleting the account must not reset the hourly limits, or deleting
         and creating it again would send emails without end."""
         with self._write() as connection:
-            user = _select_user(connection, 'id', user_id)
+            if self._billing_config is not None:
+                _, owner, _, ready = self._billing_state(connection, user_id)
+                if not ready:
+                    raise BillingHold('unverified')
+                if owner is not None:
+                    raise BillingHold('deleted_owner')
+            user = user_in(connection, 'id', user_id)
             if user is None:
                 raise UnknownUser('No account has that id.')
             # Sessions go with the user (ON DELETE CASCADE).
@@ -867,13 +1050,13 @@ class AccountStore:
             connection.execute(
                 'DELETE FROM sign_in_codes WHERE email = ?', (user.email,)
             )
-            _log_change(connection, 'user', user.id, user_path(user.id))
+            log_record_change(connection, 'user', user.id, user_path(user.id))
 
     # ── Settings ──
 
     def settings(self, user_id: str) -> Settings | None:
         """The account's settings for Today; None if it has set nothing."""
-        with self._read() as connection:
+        with self.read_transaction() as connection:
             return _select_settings(connection, user_id)
 
     # Each change names the settings it was made from by their `updated_at`, None for
@@ -908,7 +1091,9 @@ class AccountStore:
                 saved = _paired(saved, (couple_with, chart_id), limits)
             return _marked(saved, chart_id, limits) if mine else saved
 
-        return self._update_settings_in_plan(user_id, read, save), chart_id
+        return self._update_settings_in_plan(
+            user_id, read, save, adds_chart=True
+        ), chart_id
 
     def update_chart(
         self, user_id: str, chart_id: str, birth: Birth, read: str | None
@@ -1071,11 +1256,14 @@ class AccountStore:
         user_id: str,
         read: str | None,
         change: Callable[[Settings, PlanLimits], Settings],
+        *,
+        adds_chart: bool = False,
     ) -> Settings | None:
         """As _update_settings, for a change bound by the account's plan: it is given
         what the plan lets the account keep, read in the same write as the settings."""
+        basis = self._billing_basis(user_id) if adds_chart else None
         with self._write() as connection:
-            user = _select_user(connection, 'id', user_id)
+            user = user_in(connection, 'id', user_id)
             if user is None:
                 raise UnknownUser('No account has that id.')
             current = _select_settings(connection, user.id)
@@ -1083,7 +1271,12 @@ class AccountStore:
                 raise SettingsChanged('The settings changed since they were read.')
             now = self._now()
             base = current or no_settings(now)
-            changed = change(base, self._limits[user.plan])
+            limits = self._limits[user.plan]
+            if adds_chart:
+                access, limits = self._capacity_in(connection, user, basis)
+                if access is not None and access.status in ('deleting', 'deleted'):
+                    raise BillingHold('deleted_owner')
+            changed = change(base, limits)
             if changed == base:
                 return current
             if current is not None:
@@ -1094,7 +1287,7 @@ class AccountStore:
                 )
                 changed = replace(changed, updated_at=max(now, after))
             _put_settings(connection, user.id, changed)
-            _log_change(connection, 'user', user.id, user_path(user.id))
+            log_record_change(connection, 'user', user.id, user_path(user.id))
         return changed
 
     # ── Sessions ──
@@ -1116,7 +1309,7 @@ class AccountStore:
         return created == 1
 
     def session(self, token_hash: str) -> Session | None:
-        with self._read() as connection:
+        with self.read_transaction() as connection:
             row = connection.execute(
                 'SELECT token_hash, user_id, created_at, expires_at FROM sessions '
                 'WHERE token_hash = ?',
@@ -1135,7 +1328,7 @@ class AccountStore:
     def session_and_user(self, token_hash: str) -> tuple[Session, User] | None:
         """A session and its account, read in one query, or None if either is gone:
         an account deleted meanwhile takes its sessions with it."""
-        with self._read() as connection:
+        with self.read_transaction() as connection:
             row = connection.execute(
                 'SELECT s.token_hash, s.user_id, s.created_at, s.expires_at, '
                 'u.id, u.email, u.language, u.plan, u.created_at, u.updated_at '
@@ -1208,8 +1401,8 @@ class AccountStore:
         """Everything kept for an account, read at one moment: its record and its
         settings, its sessions and its address's sign-in code (without their hashes),
         and the record of codes asked for, with the client addresses they came from."""
-        with self._read() as connection:
-            user = _select_user(connection, 'id', user_id)
+        with self.read_transaction() as connection:
+            user = user_in(connection, 'id', user_id)
             if user is None:
                 raise UnknownUser('No account has that id.')
             settings = _select_settings(connection, user.id)
@@ -1277,7 +1470,7 @@ class AccountStore:
             )
 
     def code(self, email: str) -> SignInCode | None:
-        with self._read() as connection:
+        with self.read_transaction() as connection:
             row = connection.execute(
                 'SELECT email, code_hash, new_language, created_at, expires_at, '
                 'attempts FROM sign_in_codes WHERE email = ?',
@@ -1386,7 +1579,7 @@ class AccountStore:
 
     def backup_snapshot(self) -> BackupSnapshot:
         """Every record changed since the last backup, as it is now."""
-        with self._read() as connection:
+        with self.read_transaction() as connection:
             after = _scalar(
                 connection, 'SELECT backed_up_seq FROM backup_progress WHERE id = 1'
             )
@@ -1405,7 +1598,7 @@ class AccountStore:
                 )
             future = _user_version(connection) == BILLING_SCHEMA_VERSION
             financial = (
-                {r.id: r for r in _billing_records(connection)} if future else {}
+                {r.id: r for r in billing_records_in(connection)} if future else {}
             )
             rows = connection.execute(
                 'SELECT kind, record_id, path FROM changes '
@@ -1431,7 +1624,7 @@ class AccountStore:
             changes = tuple(
                 RecordChange(
                     path=path,
-                    user=_select_user(connection, 'id', record_id)
+                    user=user_in(connection, 'id', record_id)
                     if kind == 'user'
                     else None,
                     settings=_select_settings(connection, record_id)

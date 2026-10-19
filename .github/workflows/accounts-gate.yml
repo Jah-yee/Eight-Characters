@@ -26,6 +26,16 @@ jobs:
       - name: Run account tests
         run: |
           python -m unittest \
+            tests.test_billing_access \
+            tests.test_billing_service \
+            tests.test_billing_executor \
+            tests.test_billing_authority \
+            tests.test_billing_capacity \
+            tests.test_billing_migration \
+            tests.test_billing_native \
+            tests.test_billing_operations \
+            tests.test_billing_reconciliation \
+            tests.test_billing_webhook \
             tests.test_accounts_billing_recovery \
             tests.test_accounts_billing \
             tests.test_accounts_records \

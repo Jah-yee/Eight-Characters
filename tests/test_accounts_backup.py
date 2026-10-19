@@ -31,6 +31,7 @@ from tests.accounts_support import (
     Clock,
     all_object_contents,
     git,
+    legacy_store,
     make_remote_and_checkout,
 )
 
@@ -43,9 +44,7 @@ class BackupTestCase(unittest.TestCase):
         self.identity = pyrage.x25519.Identity.generate()
         self.recipient = self.identity.to_public()
         self.clock = Clock()
-        self.store = AccountStore.create(
-            self.directory / 'accounts.sqlite3', clock=self.clock
-        )
+        self.store = legacy_store(self.directory / 'accounts.sqlite3', self.clock)
 
     def backup(self) -> None:
         run_backup(self.store, self.checkout, self.recipient)
@@ -705,7 +704,10 @@ class TestRestore(BackupTestCase):
         restored.create_user('after@example.com', 'en')
         result = run_backup(restored, self.clone, self.recipient)
         self.assertEqual((result.written, result.removed), (1, 0))
-        self.assertEqual(read_manifest(self.clone), Manifest(str(self.recipient), 3))
+        self.assertEqual(
+            read_manifest(self.clone),
+            Manifest(str(self.recipient), 3, billing_count=0, backup_seq=1, sequence=1),
+        )
 
     def test_refuses_an_existing_database(self) -> None:
         self.target.write_bytes(b'')
