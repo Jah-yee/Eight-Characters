@@ -36,7 +36,6 @@ from eight_characters.accounts.records import (
     decode_user,
     encode_settings,
     encode_user,
-    no_settings,
     partner_chart_id,
     settings_value,
 )
@@ -150,6 +149,28 @@ USER = User(
 )
 
 
+def large_library() -> Settings:
+    """A future writer's retained library, above this release's write allowance."""
+    charts = tuple(SavedChart(f'{n:032x}', born(n)) for n in range(CHART_LIMIT + 1))
+    return replace(
+        SETTINGS,
+        charts=charts,
+        my_chart=charts[0].id,
+        couples=(Couple(COUPLE_ID, (charts[0].id, charts[-1].id)),),
+    )
+
+
+def keep_large_library(store: AccountStore, user: User) -> Settings:
+    """Seed a future writer's row; production save_chart still stops at 50."""
+    settings = large_library()
+    with sqlite3.connect(store.path) as connection:
+        connection.execute(
+            'INSERT INTO settings (user_id, record) VALUES (?, ?)',
+            (user.id, encode_settings(settings)),
+        )
+    return settings
+
+
 def _place_json(place: Place) -> dict[str, Any]:
     return {
         'name': place.name,
@@ -255,12 +276,6 @@ class TestSettingsRecords(unittest.TestCase):
             'a waiting partner not kept': lambda: replace(
                 SETTINGS, my_chart=None, pending_partner='4' * 32
             ),
-            'more charts than the library holds': lambda: replace(
-                no_settings('2026-10-07T12:00:00Z'),
-                charts=tuple(
-                    SavedChart(f'{n:032x}', born(n)) for n in range(CHART_LIMIT + 1)
-                ),
-            ),
         }.items():
             with self.subTest(name), self.assertRaises(RecordError):
                 change()
@@ -275,6 +290,14 @@ class TestSettingsRecords(unittest.TestCase):
             SETTINGS.schools.effective(),
             Schools(favourable='climate', season='commander', transits='phases'),
         )
+
+    def test_a_retained_library_is_not_limited_on_read(self) -> None:
+        settings = large_library()
+        self.assertEqual(decode_settings(encode_settings(settings)), settings)
+        self.assertEqual(decode_user(encode_user(USER, settings)), (USER, settings))
+        # Validation also covers the charts beyond the current write allowance.
+        with self.assertRaises(RecordError):
+            replace(settings, charts=(*settings.charts, settings.charts[-1]))
 
     def test_canonical_bytes(self) -> None:
         self.assertEqual(
@@ -535,6 +558,23 @@ class StoreCase(unittest.TestCase):
 
 
 class TestSettingsStore(StoreCase):
+    def test_a_retained_library_can_be_read_exported_and_edited(self) -> None:
+        settings = keep_large_library(self.store, self.user)
+        self.assertEqual(self.store.settings(self.user.id), settings)
+        self.assertEqual(
+            self.store.account_data(self.user.id)['settings'], settings_value(settings)
+        )
+        with self.assertRaises(ChartLimit):
+            self.store.save_chart(self.user.id, born(60), settings.updated_at)
+        self.assertEqual(self.store.settings(self.user.id), settings)
+        changed = self.store.rename_chart(
+            self.user.id, settings.charts[-1].id, 'Retained', settings.updated_at
+        )
+        assert changed is not None
+        self.assertEqual(len(changed.charts), CHART_LIMIT + 1)
+        self.assertEqual(changed.charts[-1].birth.name, 'Retained')
+        self.assertEqual(changed.couples, settings.couples)
+
     def save(self, birth: Birth) -> tuple[Settings, str]:
         """Keeps a birth in the reader's library: the settings after, and its id."""
         settings, chart_id = self.store.save_chart(self.user.id, birth, self.read())
@@ -1270,6 +1310,30 @@ class TestSettingsBackup(StoreCase):
     def _record(self, user_id: str) -> bytes:
         return pyrage.decrypt(self._path(user_id).read_bytes(), [self.identity])
 
+    def test_a_retained_library_survives_encrypted_backup_and_restore(self) -> None:
+        settings = keep_large_library(self.store, self.user)
+        self.assertEqual(
+            run_backup(self.store, self.checkout, self.recipient).written, 1
+        )
+        self.assertEqual(decode_user(self._record(self.user.id)), (self.user, settings))
+        target = self.directory / 'restored.sqlite3'
+        restore_backup(self.checkout, self.identity, target)
+        restored = AccountStore.open(target)
+        self.assertEqual(restored.user_by_id(self.user.id), self.user)
+        self.assertEqual(restored.settings(self.user.id), settings)
+        self.assertEqual(
+            restored.account_data(self.user.id)['settings'], settings_value(settings)
+        )
+        with self.assertRaises(ChartLimit):
+            restored.save_chart(self.user.id, born(60), settings.updated_at)
+        moved = restored.put_place(self.user.id, HELSINKI, settings.updated_at)
+        assert moved is not None
+        self.assertEqual(
+            (moved.charts, moved.couples), (settings.charts, settings.couples)
+        )
+        self.assertEqual(run_backup(restored, self.checkout, self.recipient).written, 1)
+        self.assertEqual(decode_user(self._record(self.user.id)), (self.user, moved))
+
     def test_the_backup_keeps_the_settings_in_the_account_record(self) -> None:
         settings, chart_id = self.store.save_chart(self.user.id, BIRTH, self.read())
         run_backup(self.store, self.checkout, self.recipient)
@@ -1366,7 +1430,9 @@ class TestSettingsApi(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.accounts = install_accounts(cls)
+        # Each test signs in a different account through this one test client.
+        # Sign-in rate limits have their own suite; do not share its hourly budget.
+        cls.accounts = install_accounts(cls, EC_CODE_REQUESTS_PER_HOUR_PER_CLIENT='100')
 
     def setUp(self) -> None:
         self.client = site_client()
@@ -1816,6 +1882,34 @@ class TestSettingsApi(unittest.TestCase):
                 self.assertEqual(refused.status_code, 400, refused.text)
                 self.assertEqual(refused.json()['detail'], detail)
         self.assertEqual(self.client.get('/api/account/settings').json(), before)
+
+    def test_a_retained_library_is_available_through_the_authenticated_api(
+        self,
+    ) -> None:
+        settings = keep_large_library(self.accounts.store, self.user)
+        kept = self.client.get('/api/account/settings')
+        self.assertEqual(kept.status_code, 200)
+        self.assertEqual(len(kept.json()['charts']), CHART_LIMIT + 1)
+        self.assertEqual(
+            kept.json()['couples'][0]['charts'], list(settings.couples[0].charts)
+        )
+        exported = self.client.post('/api/account/export', json={'key': self.key})
+        self.assertEqual(exported.status_code, 200)
+        self.assertEqual(exported.json()['settings'], settings_value(settings))
+        renamed = self.write(
+            'PUT',
+            f'/api/account/charts/{settings.charts[-1].id}/name',
+            {'key': self.key, 'name': 'Retained'},
+        )
+        self.assertEqual(renamed.status_code, 200)
+        self.assertEqual(len(renamed.json()['charts']), CHART_LIMIT + 1)
+        refused = self.write(
+            'POST', '/api/account/charts', _birth_json(born(60), self.key)
+        )
+        self.assertEqual(refused.status_code, 400)
+        self.assertEqual(
+            self.client.get('/api/account/settings').json(), renamed.json()
+        )
 
     def test_a_full_library_saves_no_more(self) -> None:
         for number in range(CHART_LIMIT):
